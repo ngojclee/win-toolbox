@@ -11,6 +11,12 @@ Download a single script and run — no install needed.
 | [`firefox-profile-taskbar/`](./firefox-profile-taskbar/) | `firefox-profile-taskbar.ps1` | Pin multiple Firefox profiles as **separate taskbar icons** |
 | [`global-bump-push/`](./global-bump-push/) | `global-bump-push.ps1` | Auto-bump `x.y.z.k` versions across all git repos & push |
 
+## Firefox Extensions
+
+| Extension | Version | Install |
+|-----------|---------|---------|
+| [Container Inspector](./removed/) | 1.0.0.7 | [⬇️ Install XPI](https://example.invalid/removed) |
+
 ## Quick Start
 
 ```powershell
