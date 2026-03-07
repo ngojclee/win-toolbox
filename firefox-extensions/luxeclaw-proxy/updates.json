@@ -1,0 +1,12 @@
+{
+    "addons": {
+        "luxeclaw-proxy@luxeclaw.com": {
+            "updates": [
+                {
+                    "version": "1.1.0.0",
+                    "update_link": "https://github.com/ngojclee/win-toolbox/releases/download/luxeclaw-proxy-v1.1.0.0-unsigned/luxeclaw-proxy-1.1.0.0-unsigned.xpi"
+                }
+            ]
+        }
+    }
+}

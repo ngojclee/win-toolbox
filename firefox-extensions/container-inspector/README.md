@@ -4,7 +4,7 @@ Display Firefox container IDs for easy FoxyProxy mapping and management.
 
 ## Install
 
-**[⬇️ Install Container Inspector v1.0.0.7](https://github.com/ngojclee/win-toolbox/releases/download/container-inspector-v1.0.0.7/container-inspector-1.0.0.7.xpi)**
+**[⬇️ Install Container Inspector v1.1.0.3](https://github.com/ngojclee/win-toolbox/releases/download/container-inspector-v1.1.0.3/container-inspector-1.1.0.3.xpi)**
 
 Click the link above in Firefox → Accept install prompt → Done!
 

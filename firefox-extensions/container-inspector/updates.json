@@ -5,6 +5,10 @@
                 {
                     "version": "1.0.0.7",
                     "update_link": "https://github.com/ngojclee/win-toolbox/releases/download/container-inspector-v1.0.0.7/container-inspector-1.0.0.7.xpi"
+                },
+                {
+                    "version": "1.1.0.3",
+                    "update_link": "https://github.com/ngojclee/win-toolbox/releases/download/container-inspector-v1.1.0.3/container-inspector-1.1.0.3.xpi"
                 }
             ]
         }
