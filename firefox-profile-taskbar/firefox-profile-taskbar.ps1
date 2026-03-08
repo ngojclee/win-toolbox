@@ -44,7 +44,7 @@ param(
     [switch]$Force
 )
 
-# ─── Auto-detect All Firefox Editions ────────────────────────────────────────
+# --- Auto-detect All Firefox Editions ----------------------------------------
 
 function Find-AllFirefox {
     <#
@@ -113,14 +113,14 @@ function Find-InstallsIni {
     return $null
 }
 
-# ─── Install Hash → Edition Mapper ───────────────────────────────────────────
+# --- Install Hash -> Edition Mapper -------------------------------------------
 
 function Get-InstallHashMap {
     <#
     .DESCRIPTION
     Parses installs.ini and profiles.ini to map install hashes to their
     default profile paths. Then cross-references with detected Firefox editions.
-    Returns a hashtable: ProfilePath → Firefox Edition ExePath
+    Returns a hashtable: ProfilePath -> Firefox Edition ExePath
     #>
     param([array]$FirefoxEditions)
 
@@ -135,7 +135,7 @@ function Get-InstallHashMap {
     $installContent = Get-Content $installsIni -Raw
     $profileContent = Get-Content $profilesIni -Raw
 
-    # Parse [Install*] sections from profiles.ini — these map install hash → default profile
+    # Parse [Install*] sections from profiles.ini -- these map install hash -> default profile
     $installSections = [regex]::Matches($profileContent, '(?ms)^\[Install([A-F0-9]+)\]\s*$(.*?)(?=^\[|\Z)')
 
     foreach ($section in $installSections) {
@@ -152,7 +152,7 @@ function Get-InstallHashMap {
         # We match by trying each edition exe path
         foreach ($edition in $FirefoxEditions) {
             $installDir = Split-Path $edition.ExePath
-            # Firefox's hash algorithm: lowercase path → djb2 hash
+            # Firefox's hash algorithm: lowercase path -> djb2 hash
             # We can't easily compute it, but we can use the installs.ini which has the same hashes
             $installsBlock = ""
             if ($installContent -match "(?ms)^\[$hash\](.+?)(?=^\[|\Z)") {
@@ -172,7 +172,7 @@ function Get-InstallHashMap {
     return $profileToExe
 }
 
-# ─── Profile Parser ──────────────────────────────────────────────────────────
+# --- Profile Parser ----------------------------------------------------------
 
 function Get-FirefoxProfiles {
     param([array]$FirefoxEditions)
@@ -184,10 +184,10 @@ function Get-FirefoxProfiles {
     $content = Get-Content $iniPath -Raw
     $profiles = @()
 
-    # Build install hash → edition mapping
+    # Build install hash -> edition mapping
     $installMap = Get-InstallHashMap -FirefoxEditions $FirefoxEditions
 
-    # Parse [Install*] sections to build profilePath → edition lookup
+    # Parse [Install*] sections to build profilePath -> edition lookup
     $installDefaults = @{}
     $installSections = [regex]::Matches($content, '(?ms)^\[Install([A-F0-9]+)\]\s*$(.*?)(?=^\[|\Z)')
     foreach ($section in $installSections) {
@@ -219,11 +219,11 @@ function Get-FirefoxProfiles {
                     $edition = $installMap[$fullPath]
                 }
 
-                # Heuristic: if profile name contains "dev-edition" → Developer Edition
+                # Heuristic: if profile name contains "dev-edition" -> Developer Edition
                 if (-not $edition -and $name -match 'dev-edition') {
                     $edition = $FirefoxEditions | Where-Object { $_.Edition -match 'Developer' } | Select-Object -First 1
                 }
-                # If profile name contains "nightly" → Nightly
+                # If profile name contains "nightly" -> Nightly
                 if (-not $edition -and $name -match 'nightly') {
                     $edition = $FirefoxEditions | Where-Object { $_.Edition -match 'Nightly' } | Select-Object -First 1
                 }
@@ -250,14 +250,14 @@ function Get-FirefoxProfiles {
     return $profiles
 }
 
-# ─── UI Helpers ───────────────────────────────────────────────────────────────
+# --- UI Helpers ---------------------------------------------------------------
 
 function Write-Banner {
     Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Magenta
+    Write-Host "===========================================================" -ForegroundColor Magenta
     Write-Host "  Firefox Multi-Profile Taskbar Setup" -ForegroundColor White
     Write-Host "  github.com/ngojclee/win-toolbox" -ForegroundColor DarkGray
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Magenta
+    Write-Host "===========================================================" -ForegroundColor Magenta
 }
 
 function Write-Step {
@@ -267,11 +267,11 @@ function Write-Step {
     Write-Host $Message
 }
 
-function Write-OK   { param([string]$m) Write-Host "  ✓ $m" -ForegroundColor Green }
-function Write-Warn { param([string]$m) Write-Host "  ⚠ $m" -ForegroundColor Yellow }
-function Write-Err  { param([string]$m) Write-Host "  ✗ $m" -ForegroundColor Red }
+function Write-OK   { param([string]$m) Write-Host "  [OK] $m" -ForegroundColor Green }
+function Write-Warn { param([string]$m) Write-Host "  [!!] $m" -ForegroundColor Yellow }
+function Write-Err  { param([string]$m) Write-Host "  [ERR] $m" -ForegroundColor Red }
 
-# ─── Create New Profile ──────────────────────────────────────────────────────
+# --- Create New Profile ------------------------------------------------------
 
 function New-FirefoxProfile {
     param([string]$ProfileName, [string]$FirefoxExe)
@@ -287,7 +287,7 @@ function New-FirefoxProfile {
     }
 }
 
-# ─── Enable Taskbar Grouping ─────────────────────────────────────────────────
+# --- Enable Taskbar Grouping -------------------------------------------------
 
 function Enable-TaskbarGrouping {
     param([string]$ProfilePath)
@@ -314,7 +314,7 @@ function Enable-TaskbarGrouping {
     }
 }
 
-# ─── Create Shortcut ─────────────────────────────────────────────────────────
+# --- Create Shortcut ---------------------------------------------------------
 
 function New-ProfileShortcut {
     param(
@@ -337,13 +337,13 @@ function New-ProfileShortcut {
     return $shortcutPath
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 # MAIN
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
 Write-Banner
 
-# ─── Find All Firefox Editions ───────────────────────────────────────────────
+# --- Find All Firefox Editions -----------------------------------------------
 $AllFirefox = @(Find-AllFirefox)
 
 if ($AllFirefox.Count -eq 0) {
@@ -358,7 +358,7 @@ foreach ($ff in $AllFirefox) {
     Write-OK "$($ff.Edition): $($ff.ExePath)"
 }
 
-# ─── Create Mode ─────────────────────────────────────────────────────────────
+# --- Create Mode -------------------------------------------------------------
 if ($Create) {
     Write-Step "CREATE" "Creating new Firefox profiles"
 
@@ -408,7 +408,7 @@ if ($Create) {
     Write-Host ""
 }
 
-# ─── Detect Profiles ─────────────────────────────────────────────────────────
+# --- Detect Profiles ---------------------------------------------------------
 Write-Step "1/4" "Detecting Firefox profiles"
 
 $allProfiles = @(Get-FirefoxProfiles -FirefoxEditions $AllFirefox)
@@ -425,7 +425,7 @@ Write-Host "  Found $($allProfiles.Count) profile(s):" -ForegroundColor White
 Write-Host ""
 for ($i = 0; $i -lt $allProfiles.Count; $i++) {
     $p = $allProfiles[$i]
-    $default = if ($p.IsDefault) { " ★" } else { "" }
+    $default = if ($p.IsDefault) { " *" } else { "" }
     $editionTag = "[$($p.Edition)]"
     Write-Host "    [$($i+1)] " -ForegroundColor Cyan -NoNewline
     Write-Host "$($p.Name)$default " -ForegroundColor White -NoNewline
@@ -439,7 +439,7 @@ if ($List) {
     exit 0
 }
 
-# ─── Select Profiles ─────────────────────────────────────────────────────────
+# --- Select Profiles ---------------------------------------------------------
 Write-Step "2/4" "Select profiles for taskbar separation"
 
 $selectedProfiles = @()
@@ -486,11 +486,11 @@ if ($selectedProfiles.Count -lt 2) {
 Write-Host ""
 Write-Host "  Selected:" -ForegroundColor White
 foreach ($sp in $selectedProfiles) {
-    Write-Host "    → $($sp.Name) " -ForegroundColor Green -NoNewline
+    Write-Host "    -> $($sp.Name) " -ForegroundColor Green -NoNewline
     Write-Host "[$($sp.Edition)]" -ForegroundColor DarkYellow
 }
 
-# ─── Ask for human-friendly names ────────────────────────────────────────────
+# --- Ask for human-friendly names --------------------------------------------
 Write-Step "3/4" "Naming shortcuts"
 Write-Host ""
 Write-Host "  Give each profile a friendly shortcut name." -ForegroundColor White
@@ -524,7 +524,7 @@ for ($i = 0; $i -lt $selectedProfiles.Count; $i++) {
     }
 }
 
-# ─── Close Firefox ───────────────────────────────────────────────────────────
+# --- Close Firefox -----------------------------------------------------------
 $ffProc = Get-Process firefox -ErrorAction SilentlyContinue
 if ($ffProc) {
     Write-Warn "Firefox is running. It must be closed to modify prefs."
@@ -543,7 +543,7 @@ if ($ffProc) {
     }
 }
 
-# ─── Enable taskbar.grouping.useprofile ───────────────────────────────────────
+# --- Enable taskbar.grouping.useprofile ---------------------------------------
 Write-Step "4/4" "Applying configuration"
 
 Write-Host ""
@@ -572,7 +572,7 @@ foreach ($item in $shortcutMap) {
     }
 }
 
-# ─── Create Desktop Shortcuts ────────────────────────────────────────────────
+# --- Create Desktop Shortcuts ------------------------------------------------
 Write-Host ""
 Write-Host "  Creating desktop shortcuts..." -ForegroundColor White
 
@@ -584,48 +584,48 @@ foreach ($item in $shortcutMap) {
         -ProfilePath $item.Profile.Path `
         -FirefoxExe $item.Profile.ExePath `
         -OutputDir $DesktopDir
-    Write-OK "Desktop: $($item.ShortcutName).lnk → $($item.Profile.Edition)"
+    Write-OK "Desktop: $($item.ShortcutName).lnk -> $($item.Profile.Edition)"
 }
 
-# ─── Final Instructions ──────────────────────────────────────────────────────
+# --- Final Instructions -------------------------------------------------------
 Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Magenta
-Write-Host "  ✓ Configuration Complete!" -ForegroundColor Green
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Magenta
+Write-Host "===========================================================" -ForegroundColor Magenta
+Write-Host "  Configuration Complete!" -ForegroundColor Green
+Write-Host "===========================================================" -ForegroundColor Magenta
 
 Write-Host ""
-Write-Host "  ┌────────────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
-Write-Host "  │  MANUAL STEPS (Windows requires these by hand):        │" -ForegroundColor DarkCyan
-Write-Host "  │                                                        │" -ForegroundColor DarkCyan
-Write-Host "  │  1. Right-click ALL Firefox icons on taskbar           │" -ForegroundColor White
-Write-Host "  │     → 'Unpin from taskbar'                             │" -ForegroundColor White
-Write-Host "  │                                                        │" -ForegroundColor DarkCyan
+Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkCyan
+Write-Host "  |  MANUAL STEPS (Windows requires these by hand):          |" -ForegroundColor DarkCyan
+Write-Host "  |                                                          |" -ForegroundColor DarkCyan
+Write-Host "  |  1. Right-click ALL Firefox icons on taskbar             |" -ForegroundColor White
+Write-Host "  |     -> 'Unpin from taskbar'                              |" -ForegroundColor White
+Write-Host "  |                                                          |" -ForegroundColor DarkCyan
 
 $num = 2
 foreach ($item in $shortcutMap) {
-    Write-Host "  │  $num. Double-click '$($item.ShortcutName)' on Desktop" -ForegroundColor White
-    Write-Host "  │     → Wait for it to open                              │" -ForegroundColor White
-    Write-Host "  │     → Right-click its taskbar icon → 'Pin to taskbar'  │" -ForegroundColor White
-    Write-Host "  │                                                        │" -ForegroundColor DarkCyan
+    Write-Host "  |  $num. Double-click '$($item.ShortcutName)' on Desktop" -ForegroundColor White
+    Write-Host "  |     -> Wait for it to open                              |" -ForegroundColor White
+    Write-Host "  |     -> Right-click its taskbar icon -> 'Pin to taskbar'  |" -ForegroundColor White
+    Write-Host "  |                                                          |" -ForegroundColor DarkCyan
     $num++
 }
 
-Write-Host "  │  Each profile will get its own taskbar icon!           │" -ForegroundColor Green
-Write-Host "  └────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
+Write-Host "  |  Each profile will get its own taskbar icon!             |" -ForegroundColor Green
+Write-Host "  +----------------------------------------------------------+" -ForegroundColor DarkCyan
 
 Write-Host ""
 Write-Host "  Profile Summary:" -ForegroundColor Gray
 foreach ($item in $shortcutMap) {
     Write-Host "    $($item.ShortcutName): " -ForegroundColor White -NoNewline
     Write-Host "$($item.Profile.FolderName) " -ForegroundColor DarkGray -NoNewline
-    Write-Host "→ $($item.Profile.Edition)" -ForegroundColor DarkYellow
+    Write-Host "-> $($item.Profile.Edition)" -ForegroundColor DarkYellow
 }
 
 Write-Host ""
 Write-Host "  Tips:" -ForegroundColor Yellow
-Write-Host "    • Re-run this script anytime to add more profiles" -ForegroundColor Gray
-Write-Host "    • Use -Create flag on fresh Firefox installs" -ForegroundColor Gray
-Write-Host "    • Use -List flag to see all profiles" -ForegroundColor Gray
-Write-Host "    • Supports: Firefox, Developer Edition, Nightly, ESR" -ForegroundColor Gray
-Write-Host "    • The '-no-remote' flag in shortcuts is what makes separation work" -ForegroundColor Gray
+Write-Host "    - Re-run this script anytime to add more profiles" -ForegroundColor Gray
+Write-Host "    - Use -Create flag on fresh Firefox installs" -ForegroundColor Gray
+Write-Host "    - Use -List flag to see all profiles" -ForegroundColor Gray
+Write-Host "    - Supports: Firefox, Developer Edition, Nightly, ESR" -ForegroundColor Gray
+Write-Host "    - The '-no-remote' flag in shortcuts is what makes separation work" -ForegroundColor Gray
 Write-Host ""
