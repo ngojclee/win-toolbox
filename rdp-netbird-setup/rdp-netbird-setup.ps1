@@ -53,15 +53,27 @@ function Load-State {
 function Get-NetbirdExe {
     $candidates = @(
         "netbird",
+        "netbird.exe",
         "$env:ProgramFiles\Netbird\netbird.exe",
         "$env:ProgramFiles\netbird\netbird.exe",
-        "C:\Program Files\Netbird\netbird.exe"
+        "$env:ProgramFiles\NetBird\netbird.exe",
+        "${env:ProgramFiles(x86)}\Netbird\netbird.exe",
+        "$env:LOCALAPPDATA\Netbird\netbird.exe",
+        "$env:LOCALAPPDATA\Programs\Netbird\netbird.exe",
+        "$env:ProgramData\Netbird\netbird.exe",
+        "C:\Program Files\Netbird\netbird.exe",
+        "C:\Netbird\netbird.exe"
     )
     foreach ($c in $candidates) {
         $found = Get-Command $c -ErrorAction SilentlyContinue
         if ($found) { return $found.Source }
         if (Test-Path $c) { return $c }
     }
+    # Fallback: try where.exe
+    try {
+        $w = (where.exe netbird 2>$null) | Select-Object -First 1
+        if ($w -and (Test-Path $w)) { return $w }
+    } catch {}
     return $null
 }
 
@@ -262,8 +274,11 @@ function Get-NetbirdPeers {
     $nb = Get-NetbirdExe
     if (-not $nb) {
         Write-Host "  [!] Khong tim thay Netbird CLI." -ForegroundColor Red
+        Write-Host "  Thu chay 'netbird status' de kiem tra." -ForegroundColor DarkGray
+        Write-Host "  Neu cai roi, thu chay: where.exe netbird" -ForegroundColor DarkGray
         return @()
     }
+    Write-Host "  Netbird: $nb" -ForegroundColor DarkGray
 
     $rawLines = & $nb status -d 2>&1
     $peers = @()
