@@ -6,8 +6,8 @@
     Safe to upload to GitHub public repo (no credentials stored)
 
 .DESCRIPTION
-    First run  : Cau hinh RDP + blank password + chon peers duoc phep
-    Lan sau    : Chi hoi them/bo peer, khong hoi lai cau hinh cu
+    First run  : Cau hinh RDP + doi port + user RDP + blank password + chon peers
+    Lan sau    : Quan ly peers, port, user - khong hoi lai cau hinh cu
 
 .NOTES
     Chay voi quyen Administrator
@@ -20,6 +20,10 @@
 $FIREWALL_RULE_ALLOW  = "RDP - Allowed IPs Only"
 $FIREWALL_RULE_BLOCK  = "RDP - Block All Others"
 $STATE_FILE           = "$env:ProgramData\rdp-netbird-setup\state.json"
+$RDP_DEFAULT_PORT     = 33389
+$RDP_PORT_MIN         = 1024
+$RDP_PORT_MAX         = 65535
+$RDP_DEFAULT_USER     = "rdp"
 
 # ============================================================
 # HELPERS
@@ -60,6 +64,192 @@ function Get-NetbirdExe {
     }
     return $null
 }
+
+# ---- RDP Port Helpers ----
+
+function Get-CurrentRDPPort {
+    $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp"
+    try {
+        $port = (Get-ItemProperty -Path $regPath -Name "PortNumber" -ErrorAction Stop).PortNumber
+        return [int]$port
+    }
+    catch {
+        return 3389
+    }
+}
+
+function Set-RDPPort([int]$Port) {
+    $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp"
+    Set-ItemProperty -Path $regPath -Name "PortNumber" -Value $Port -Type DWord
+    Write-Host "  [OK] RDP port da doi thanh $Port" -ForegroundColor Green
+
+    Restart-Service -Name "TermService" -Force -ErrorAction SilentlyContinue
+    Write-Host "  [OK] TermService da restart." -ForegroundColor Green
+}
+
+function Read-PortInput {
+    param([int]$CurrentPort = 3389)
+
+    Write-Host "  Port RDP hien tai: $CurrentPort" -ForegroundColor White
+    Write-Host "  Port mac dinh Windows: 3389 (bi bot scan lien tuc)" -ForegroundColor DarkGray
+    Write-Host "  Port khuyen nghi : $RDP_DEFAULT_PORT (tranh scanner, de nho)" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Nhap port moi (Enter = $RDP_DEFAULT_PORT):" -ForegroundColor Yellow
+    $portInput = Read-Host "  Port"
+
+    if ([string]::IsNullOrWhiteSpace($portInput)) {
+        return $RDP_DEFAULT_PORT
+    }
+
+    $portNum = 0
+    if (-not [int]::TryParse($portInput.Trim(), [ref]$portNum)) {
+        Write-Host "  [!] Khong phai so. Dung port $RDP_DEFAULT_PORT." -ForegroundColor Red
+        return $RDP_DEFAULT_PORT
+    }
+
+    if ($portNum -lt $RDP_PORT_MIN -or $portNum -gt $RDP_PORT_MAX) {
+        Write-Host "  [!] Port phai trong khoang $RDP_PORT_MIN-$RDP_PORT_MAX. Dung port $RDP_DEFAULT_PORT." -ForegroundColor Red
+        return $RDP_DEFAULT_PORT
+    }
+
+    $reserved = @(80, 443, 21, 22, 25, 53, 110, 143, 445, 993, 995, 8080, 8443)
+    if ($reserved -contains $portNum) {
+        Write-Host "  [WARN] Port $portNum la port pho bien cua dich vu khac. Van dung?" -ForegroundColor Yellow
+        $confirm = Read-Host "  (y/n)"
+        if ($confirm.Trim().ToLower() -ne "y") {
+            return $RDP_DEFAULT_PORT
+        }
+    }
+
+    return $portNum
+}
+
+# ---- RDP User Helpers ----
+
+function Get-RDPGroupMembers {
+    try {
+        $members = net localgroup "Remote Desktop Users" 2>&1
+        $result = @()
+        $capture = $false
+        foreach ($line in $members) {
+            if ($line -match '^---') { $capture = $true; continue }
+            if ($capture -and $line -match '^\S') {
+                $name = $line.Trim()
+                if ($name -and $name -notmatch 'command completed') {
+                    $result += $name
+                }
+            }
+        }
+        return $result
+    }
+    catch { return @() }
+}
+
+function Test-LocalUser([string]$Username) {
+    try {
+        Get-LocalUser -Name $Username -ErrorAction Stop | Out-Null
+        return $true
+    }
+    catch { return $false }
+}
+
+function New-RDPUser {
+    param(
+        [string]$Username,
+        [bool]$BlankPassword
+    )
+
+    $exists = Test-LocalUser -Username $Username
+
+    if ($exists) {
+        Write-Host "  User '$Username' da ton tai." -ForegroundColor Yellow
+        # Ensure user is in Remote Desktop Users group
+        $inGroup = (Get-RDPGroupMembers) -contains $Username
+        if (-not $inGroup) {
+            net localgroup "Remote Desktop Users" $Username /add 2>&1 | Out-Null
+            Write-Host "  [OK] Da them '$Username' vao Remote Desktop Users." -ForegroundColor Green
+        } else {
+            Write-Host "  [OK] '$Username' da co trong Remote Desktop Users." -ForegroundColor Green
+        }
+        return $Username
+    }
+
+    # Create new user
+    if ($BlankPassword) {
+        # Create user with blank password
+        net user $Username /add /active:yes 2>&1 | Out-Null
+        # Set blank password explicitly
+        $emptySecure = New-Object System.Security.SecureString
+        Set-LocalUser -Name $Username -Password $emptySecure -ErrorAction SilentlyContinue
+        Write-Host "  [OK] Tao user '$Username' (khong mat khau)." -ForegroundColor Green
+    }
+    else {
+        Write-Host "  Nhap mat khau cho user '$Username':" -ForegroundColor Yellow
+        $secPwd = Read-Host "  Password" -AsSecureString
+        net user $Username /add /active:yes 2>&1 | Out-Null
+        Set-LocalUser -Name $Username -Password $secPwd
+        Write-Host "  [OK] Tao user '$Username' (co mat khau)." -ForegroundColor Green
+    }
+
+    # Ensure NOT in Administrators (standard user only)
+    net localgroup "Administrators" $Username /delete 2>&1 | Out-Null
+
+    # Add to Remote Desktop Users
+    net localgroup "Remote Desktop Users" $Username /add 2>&1 | Out-Null
+    Write-Host "  [OK] Da them '$Username' vao Remote Desktop Users." -ForegroundColor Green
+
+    # Password never expires for RDP convenience
+    Set-LocalUser -Name $Username -PasswordNeverExpires $true -ErrorAction SilentlyContinue
+
+    return $Username
+}
+
+function Read-RDPUserSetup {
+    param([bool]$AllowBlank)
+
+    Write-Host "  Tao user rieng cho RDP?" -ForegroundColor Yellow
+    Write-Host "  (Khuyen nghi: tach biet khoi admin, an toan hon)" -ForegroundColor DarkGray
+    Write-Host "  (User chi co quyen Remote Desktop, khong phai Admin)" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  [1] Tao user rieng (khuyen nghi)" -ForegroundColor White
+    Write-Host "  [2] Dung user hien tai ($env:USERNAME)" -ForegroundColor White
+    Write-Host ""
+    $userChoice = Read-Host "  Chon (1-2)"
+
+    if ($userChoice -eq "1") {
+        Write-Host ""
+        Write-Host "  Nhap ten user RDP (Enter = '$RDP_DEFAULT_USER'):" -ForegroundColor Yellow
+        Write-Host "  (Nen dung cung ten tren tat ca may de nho)" -ForegroundColor DarkGray
+        $userName = Read-Host "  Username"
+
+        if ([string]::IsNullOrWhiteSpace($userName)) {
+            $userName = $RDP_DEFAULT_USER
+        }
+        $userName = $userName.Trim()
+
+        # Validate username
+        if ($userName -match '[\\\/\[\]:;|=,+\*\?<>@"]+' -or $userName.Length -gt 20) {
+            Write-Host "  [!] Ten user khong hop le. Dung '$RDP_DEFAULT_USER'." -ForegroundColor Red
+            $userName = $RDP_DEFAULT_USER
+        }
+
+        $createdUser = New-RDPUser -Username $userName -BlankPassword $AllowBlank
+        return $createdUser
+    }
+    else {
+        # Ensure current user is in Remote Desktop Users
+        $current = $env:USERNAME
+        $inGroup = (Get-RDPGroupMembers) -contains $current
+        if (-not $inGroup) {
+            net localgroup "Remote Desktop Users" $current /add 2>&1 | Out-Null
+            Write-Host "  [OK] Da them '$current' vao Remote Desktop Users." -ForegroundColor Green
+        }
+        Write-Host "  [OK] Dung user '$current' cho RDP." -ForegroundColor Green
+        return $current
+    }
+}
+
+# ---- Netbird Peer Helpers ----
 
 function Get-NetbirdPeers {
     $nb = Get-NetbirdExe
@@ -147,6 +337,8 @@ function Show-PeerSelector {
     return @($toggled)
 }
 
+# ---- Firewall Helpers ----
+
 function Get-CurrentWhitelistedIPs {
     $rule = Get-NetFirewallRule -DisplayName $FIREWALL_RULE_ALLOW -ErrorAction SilentlyContinue
     if (-not $rule) { return @() }
@@ -155,7 +347,12 @@ function Get-CurrentWhitelistedIPs {
     return @($f.RemoteAddress)
 }
 
-function Apply-FirewallRules([string[]]$AllowedIPs) {
+function Apply-FirewallRules {
+    param(
+        [string[]]$AllowedIPs,
+        [int]$Port
+    )
+
     Remove-NetFirewallRule -DisplayName $FIREWALL_RULE_ALLOW -ErrorAction SilentlyContinue
     Remove-NetFirewallRule -DisplayName $FIREWALL_RULE_BLOCK -ErrorAction SilentlyContinue
 
@@ -166,14 +363,16 @@ function Apply-FirewallRules([string[]]$AllowedIPs) {
 
     New-NetFirewallRule `
         -DisplayName $FIREWALL_RULE_ALLOW -Direction Inbound -Protocol TCP `
-        -LocalPort 3389 -RemoteAddress $AllowedIPs -Action Allow -Profile Any -Enabled True | Out-Null
+        -LocalPort $Port -RemoteAddress $AllowedIPs -Action Allow -Profile Any -Enabled True | Out-Null
 
     New-NetFirewallRule `
         -DisplayName $FIREWALL_RULE_BLOCK -Direction Inbound -Protocol TCP `
-        -LocalPort 3389 -RemoteAddress "Any" -Action Block -Profile Any -Enabled True | Out-Null
+        -LocalPort $Port -RemoteAddress "Any" -Action Block -Profile Any -Enabled True | Out-Null
 
-    Write-Host "  [OK] Firewall da cap nhat." -ForegroundColor Green
+    Write-Host "  [OK] Firewall da cap nhat (port $Port)." -ForegroundColor Green
 }
+
+# ---- RDP Enable / Blank Password ----
 
 function Enable-RDP {
     $reg = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server"
@@ -191,6 +390,46 @@ function Set-BlankPasswordPolicy([bool]$Allow) {
     Write-Host "  [OK] $msg" -ForegroundColor Green
 }
 
+# ---- Display Config Summary ----
+
+function Show-ConfigSummary {
+    param(
+        [int]$Port,
+        [bool]$AllowBlank,
+        [string]$RDPUser,
+        [string[]]$AllowedIPs
+    )
+    Write-Host ""
+    Write-Host "  ┌──────────────────────────────────────────────┐" -ForegroundColor Cyan
+    Write-Host "  │          CAU HINH HIEN TAI                   │" -ForegroundColor Cyan
+    Write-Host "  ├──────────────────────────────────────────────┤" -ForegroundColor Cyan
+    Write-Host ("  │  RDP Port      : {0,-27}│" -f $Port) -ForegroundColor White
+    Write-Host ("  │  RDP User      : {0,-27}│" -f $(if ($RDPUser) { $RDPUser } else { '(chua cau hinh)' })) -ForegroundColor White
+    Write-Host ("  │  Blank password : {0,-27}│" -f $(if ($AllowBlank) { 'Cho phep' } else { 'Khoa' })) -ForegroundColor White
+    Write-Host ("  │  IP whitelisted : {0,-27}│" -f $AllowedIPs.Count) -ForegroundColor White
+    Write-Host "  │                                              │" -ForegroundColor Cyan
+
+    if ($AllowedIPs.Count -gt 0) {
+        foreach ($ip in $AllowedIPs) {
+            Write-Host ("  │    - {0,-40}│" -f $ip) -ForegroundColor DarkGray
+        }
+    } else {
+        Write-Host "  │    (chua co IP nao)                         │" -ForegroundColor Yellow
+    }
+
+    Write-Host "  └──────────────────────────────────────────────┘" -ForegroundColor Cyan
+
+    # Connection hint
+    Write-Host ""
+    $portSuffix = if ($Port -ne 3389) { ":$Port" } else { "" }
+    $userPrefix = if ($RDPUser) { "$RDPUser@" } else { "" }
+    Write-Host "  >> Ket noi: mstsc /v:<IP>$portSuffix" -ForegroundColor Yellow
+    if ($RDPUser) {
+        Write-Host "     User   : $RDPUser" -ForegroundColor Yellow
+    }
+    Write-Host "     Vi du  : mstsc /v:100.64.0.1$portSuffix" -ForegroundColor DarkGray
+}
+
 # ============================================================
 # FIRST RUN FLOW
 # ============================================================
@@ -198,19 +437,35 @@ function Set-BlankPasswordPolicy([bool]$Allow) {
 function Run-FirstSetup {
     Write-Header "First Run - Cau Hinh Ban Dau"
 
-    Write-Host "[1/3] Bat RDP..." -ForegroundColor Cyan
+    Write-Host "[1/5] Bat RDP..." -ForegroundColor Cyan
     Enable-RDP
 
     Write-Host ""
-    Write-Host "[2/3] Blank password policy..." -ForegroundColor Cyan
+    Write-Host "[2/5] Doi port RDP..." -ForegroundColor Cyan
+    Write-Host "  Port 3389 (mac dinh) bi bot scan lien tuc tren Internet." -ForegroundColor DarkGray
+    Write-Host "  Doi sang port khac giup tranh 99% scan tu dong." -ForegroundColor DarkGray
+    $rdpPort = Read-PortInput -CurrentPort (Get-CurrentRDPPort)
+    $oldPort = Get-CurrentRDPPort
+    if ($rdpPort -ne $oldPort) {
+        Set-RDPPort -Port $rdpPort
+    } else {
+        Write-Host "  [OK] Giu nguyen port $rdpPort" -ForegroundColor Green
+    }
+
+    Write-Host ""
+    Write-Host "[3/5] Blank password policy..." -ForegroundColor Cyan
     Write-Host "  Cho phep RDP bang tai khoan khong co mat khau?" -ForegroundColor Yellow
     Write-Host "  (Chi nen bat neu may nay trong LAN + da dung Netbird gioi han IP)" -ForegroundColor DarkGray
-    $bpInput   = Read-Host "  (y/n)"
+    $bpInput    = Read-Host "  (y/n)"
     $allowBlank = $bpInput.Trim().ToLower() -eq "y"
     Set-BlankPasswordPolicy -Allow $allowBlank
 
     Write-Host ""
-    Write-Host "[3/3] Chon may duoc phep RDP vao may nay..." -ForegroundColor Cyan
+    Write-Host "[4/5] Cau hinh user RDP..." -ForegroundColor Cyan
+    $rdpUser = Read-RDPUserSetup -AllowBlank $allowBlank
+
+    Write-Host ""
+    Write-Host "[5/5] Chon may duoc phep RDP vao may nay..." -ForegroundColor Cyan
     $peers    = Get-NetbirdPeers
     $finalIPs = @()
 
@@ -227,10 +482,12 @@ function Run-FirstSetup {
         $finalIPs = Show-PeerSelector -Peers $peers -CurrentlyAllowed @()
     }
 
-    Apply-FirewallRules -AllowedIPs $finalIPs
+    Apply-FirewallRules -AllowedIPs $finalIPs -Port $rdpPort
 
     Save-State @{
         configured  = $true
+        rdpPort     = $rdpPort
+        rdpUser     = $rdpUser
         allowBlank  = $allowBlank
         allowedIPs  = $finalIPs
         lastUpdated = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
@@ -238,10 +495,10 @@ function Run-FirstSetup {
 
     Write-Host ""
     Write-Host "  === Cau hinh hoan tat ===" -ForegroundColor Green
-    Write-Host "  Blank password : $(if ($allowBlank) { 'Cho phep' } else { 'Khoa' })" -ForegroundColor White
-    Write-Host "  IP duoc phep   : $(if ($finalIPs.Count) { $finalIPs -join ', ' } else { '(chua co)' })" -ForegroundColor White
+    Show-ConfigSummary -Port $rdpPort -AllowBlank $allowBlank -RDPUser $rdpUser -AllowedIPs $finalIPs
 
     gpupdate /force 2>&1 | Out-Null
+    Write-Host ""
     Write-Host "  Group Policy   : Da refresh" -ForegroundColor DarkGray
 }
 
@@ -250,22 +507,25 @@ function Run-FirstSetup {
 # ============================================================
 
 function Run-ManagePeers([object]$State) {
-    Write-Header "Quan Ly Peers RDP"
+    Write-Header "Quan Ly RDP"
 
-    $currentIPs = Get-CurrentWhitelistedIPs
+    $currentIPs  = Get-CurrentWhitelistedIPs
+    $currentPort = if ($State.rdpPort) { [int]$State.rdpPort } else { Get-CurrentRDPPort }
+    $currentUser = if ($State.rdpUser) { $State.rdpUser } else { $null }
 
-    Write-Host "  Cau hinh hien tai:" -ForegroundColor DarkGray
-    Write-Host "  Blank password : $(if ($State.allowBlank) { 'Cho phep' } else { 'Khoa' })" -ForegroundColor DarkGray
-    Write-Host "  So IP trong list: $($currentIPs.Count)" -ForegroundColor DarkGray
+    Show-ConfigSummary -Port $currentPort -AllowBlank ([bool]$State.allowBlank) -RDPUser $currentUser -AllowedIPs $currentIPs
+
+    Write-Host ""
     Write-Host "  Cap nhat lan cuoi: $($State.lastUpdated)" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  [1] Them / Bo peer (query Netbird)" -ForegroundColor White
     Write-Host "  [2] Nhap IP thu cong" -ForegroundColor White
-    Write-Host "  [3] Xem danh sach IP hien tai" -ForegroundColor White
+    Write-Host "  [3] Doi port RDP" -ForegroundColor White
     Write-Host "  [4] Doi cau hinh blank password" -ForegroundColor White
-    Write-Host "  [5] Reset - chay lai First Run" -ForegroundColor White
+    Write-Host "  [5] Quan ly user RDP" -ForegroundColor White
+    Write-Host "  [6] Reset - chay lai First Run" -ForegroundColor White
     Write-Host ""
-    $choice = Read-Host "  Chon (1-5)"
+    $choice = Read-Host "  Chon (1-6)"
 
     switch ($choice) {
         "1" {
@@ -281,12 +541,11 @@ function Run-ManagePeers([object]$State) {
             }
             $ok = Read-Host "  Xac nhan? (y/n)"
             if ($ok.ToLower() -eq "y") {
-                Apply-FirewallRules -AllowedIPs $newIPs
+                Apply-FirewallRules -AllowedIPs $newIPs -Port $currentPort
                 Save-State @{
-                    configured  = $true
-                    allowBlank  = $State.allowBlank
-                    allowedIPs  = $newIPs
-                    lastUpdated = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+                    configured=$true; rdpPort=$currentPort; rdpUser=$currentUser
+                    allowBlank=$State.allowBlank; allowedIPs=$newIPs
+                    lastUpdated=(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
                 }
             }
         }
@@ -300,15 +559,30 @@ function Run-ManagePeers([object]$State) {
                 else { Write-Host "  ! Khong hop le" -ForegroundColor Red }
             }
             $merged = @($currentIPs + $added | Sort-Object -Unique)
-            Apply-FirewallRules -AllowedIPs $merged
-            Save-State @{ configured=$true; allowBlank=$State.allowBlank; allowedIPs=$merged; lastUpdated=(Get-Date -Format "yyyy-MM-dd HH:mm:ss") }
+            Apply-FirewallRules -AllowedIPs $merged -Port $currentPort
+            Save-State @{
+                configured=$true; rdpPort=$currentPort; rdpUser=$currentUser
+                allowBlank=$State.allowBlank; allowedIPs=$merged
+                lastUpdated=(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+            }
         }
         "3" {
-            Write-Host ""
-            if ($currentIPs.Count -eq 0) {
-                Write-Host "  (Chua co IP nao trong whitelist)" -ForegroundColor Yellow
+            $newPort = Read-PortInput -CurrentPort $currentPort
+            if ($newPort -ne $currentPort) {
+                $ok = Read-Host "  Xac nhan doi port $currentPort -> $newPort? (y/n)"
+                if ($ok.ToLower() -eq "y") {
+                    Set-RDPPort -Port $newPort
+                    Apply-FirewallRules -AllowedIPs $currentIPs -Port $newPort
+                    Save-State @{
+                        configured=$true; rdpPort=$newPort; rdpUser=$currentUser
+                        allowBlank=$State.allowBlank; allowedIPs=$currentIPs
+                        lastUpdated=(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+                    }
+                    Write-Host ""
+                    Write-Host "  >> Ket noi RDP moi: mstsc /v:<IP>:$newPort" -ForegroundColor Yellow
+                }
             } else {
-                $currentIPs | ForEach-Object { Write-Host "  - $_" -ForegroundColor White }
+                Write-Host "  Port khong doi." -ForegroundColor DarkGray
             }
         }
         "4" {
@@ -317,10 +591,38 @@ function Run-ManagePeers([object]$State) {
             $ok = Read-Host "  Xac nhan $msg? (y/n)"
             if ($ok.ToLower() -eq "y") {
                 Set-BlankPasswordPolicy -Allow $newBlank
-                Save-State @{ configured=$true; allowBlank=$newBlank; allowedIPs=$currentIPs; lastUpdated=(Get-Date -Format "yyyy-MM-dd HH:mm:ss") }
+                Save-State @{
+                    configured=$true; rdpPort=$currentPort; rdpUser=$currentUser
+                    allowBlank=$newBlank; allowedIPs=$currentIPs
+                    lastUpdated=(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+                }
             }
         }
         "5" {
+            Write-Host ""
+            Write-Host "  User RDP hien tai: $(if ($currentUser) { $currentUser } else { '(chua cau hinh)' })" -ForegroundColor White
+            Write-Host ""
+            Write-Host "  Thanh vien Remote Desktop Users:" -ForegroundColor DarkGray
+            $rdpMembers = Get-RDPGroupMembers
+            if ($rdpMembers.Count -eq 0) {
+                Write-Host "    (trong)" -ForegroundColor Yellow
+            } else {
+                $rdpMembers | ForEach-Object { Write-Host "    - $_" -ForegroundColor White }
+            }
+            Write-Host ""
+            Write-Host "  [a] Tao / cau hinh user RDP" -ForegroundColor White
+            Write-Host "  [b] Quay lai" -ForegroundColor White
+            $sub = Read-Host "  Chon"
+            if ($sub.ToLower() -eq "a") {
+                $newUser = Read-RDPUserSetup -AllowBlank ([bool]$State.allowBlank)
+                Save-State @{
+                    configured=$true; rdpPort=$currentPort; rdpUser=$newUser
+                    allowBlank=$State.allowBlank; allowedIPs=$currentIPs
+                    lastUpdated=(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+                }
+            }
+        }
+        "6" {
             $ok = Read-Host "  Xoa toan bo state va chay lai First Run? (y/n)"
             if ($ok.ToLower() -eq "y") {
                 Remove-Item $STATE_FILE -Force -ErrorAction SilentlyContinue
