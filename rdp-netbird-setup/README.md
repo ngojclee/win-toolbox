@@ -8,7 +8,7 @@ Lock down Windows RDP so **only your Netbird peers** can connect. Non-standard p
 ┌───────────────────────────────────────────┐
 │  Layer 1: Port 33389 (not default 3389)   │  Avoids 99% of bot scanners
 │  Layer 2: Firewall IP whitelist           │  Only Netbird peers allowed
-│  Layer 3: Dedicated "rdp" user            │  Standard user, not admin
+│  Layer 3: Dedicated "rdp" user            │  Separate account (admin optional)
 │  Layer 4: Netbird VPN tunnel              │  Already encrypted + auth'd
 └───────────────────────────────────────────┘
 ```
@@ -91,16 +91,22 @@ The script guides you through 5 steps:
 [4/5] Cau hinh user RDP...
   [1] Tao user rieng (khuyen nghi)
   [2] Dung user hien tai (MyUser)
-  Chon (1-2): 1
-  Nhap ten user RDP (Enter = 'rdp'):
+  Chon (Enter = 1): ↵
+  Nhap ten user RDP (Enter = 'louis-rdp'):
   Username: ↵
-  [OK] Tao user 'rdp' (khong mat khau).
-  [OK] Da them 'rdp' vao Remote Desktop Users.
+  Cho user 'louis-rdp' quyen Administrator?
+  Cho Admin? (y/n, Enter = n): ↵
+  [OK] Tao user 'louis-rdp' (khong mat khau).
+  [OK] Da them 'louis-rdp' vao Remote Desktop Users.
 
 [5/5] Chon may duoc phep RDP vao may nay...
+  [  0]  >>> CHON TAT CA (2 peers Connected) <<<
+
   [ 1]  [ON]  desktop-home.netbird.cloud          100.64.0.1
   [ 2]  [ON]  laptop-work.netbird.cloud            100.64.0.2
-  Nhap so de TOGGLE: 1 2
+  Enter = chon tat ca Connected
+  Chon (Enter = all): ↵
+  [OK] Da chon tat ca 2 peers Connected.
 ```
 
 ## Config Summary
@@ -112,7 +118,7 @@ After setup, you'll see a summary box:
   │          CAU HINH HIEN TAI                   │
   ├──────────────────────────────────────────────┤
   │  RDP Port      : 33389                      │
-  │  RDP User      : rdp                        │
+  │  RDP User      : louis-rdp                    │
   │  Blank password : Cho phep                   │
   │  IP whitelisted : 2                          │
   │                                              │
@@ -121,7 +127,7 @@ After setup, you'll see a summary box:
   └──────────────────────────────────────────────┘
 
   >> Ket noi: mstsc /v:<IP>:33389
-     User   : rdp
+     User   : louis-rdp
      Vi du  : mstsc /v:100.64.0.1:33389
 ```
 
@@ -132,7 +138,7 @@ After setup, you'll see a summary box:
 | **Enable RDP** | Sets `fDenyTSConnections = 0`, starts `TermService` |
 | **Change port** | Modifies `PortNumber` in `HKLM:\...\RDP-Tcp`, restarts TermService |
 | **Blank password** | Toggles `LimitBlankPasswordUse` in `HKLM:\...\Lsa` |
-| **Create user** | `net user rdp /add` + adds to `Remote Desktop Users` (not Administrators) |
+| **Create user** | `net user louis-rdp /add` + `Remote Desktop Users` (optionally `Administrators`) |
 | **Firewall Allow** | Creates rule `RDP - Allowed IPs Only` (TCP on custom port, whitelisted IPs) |
 | **Firewall Block** | Creates rule `RDP - Block All Others` (TCP on custom port, block everything else) |
 | **State file** | Saves config to `%ProgramData%\rdp-netbird-setup\state.json` |
@@ -144,13 +150,15 @@ The dedicated RDP user is:
 
 | Property | Value |
 |----------|-------|
-| **Default name** | `rdp` (customizable) |
-| **Group** | `Remote Desktop Users` only |
-| **Not in** | `Administrators` (standard user, cannot install software or change system settings) |
+| **Default name** | `louis-rdp` (customizable) |
+| **Group** | `Remote Desktop Users` |
+| **Admin rights** | Optional — script asks during setup (default: **no**) |
 | **Password** | Blank (if allowed) or user-set |
 | **Expiry** | Password never expires |
 
-> 💡 **Tip**: Use the same username (`rdp`) across all your machines for consistency. You only need to remember the Netbird IP and port.
+> 💡 **Tip**: Use the same username (`louis-rdp`) across all your machines for consistency. Every prompt has a sensible default—just press Enter through everything for a quick setup.
+>
+> You don't need to log into the `louis-rdp` user locally — just RDP in remotely. Your main local account stays separate.
 
 ## Port Configuration
 
@@ -178,7 +186,7 @@ Windows evaluates Allow rules before Block rules, so only your selected peers ge
 | Item | Detail |
 |------|--------|
 | **No credentials stored** | Safe for public repos — all config is interactive |
-| **Dedicated user** | `rdp` user has no admin privileges; compromise is limited |
+| **Dedicated user** | `rdp` user is separate from main account; admin rights optional |
 | **Non-standard port** | Eliminates automated scanner traffic |
 | **Blank password risk** | Only enable if your machine is exclusively behind Netbird VPN |
 | **State file** | Contains only: flags, port, username, IP list, timestamp |
@@ -210,6 +218,6 @@ Run anytime. The script detects the existing state file and shows the management
 | Peers show `[OFF]` | Peer is registered but not currently connected |
 | RDP still blocked after adding IP | Check `wf.msc` → Inbound Rules for conflicts with old port |
 | Can't connect with blank password | Ensure option was set to `y` and `gpupdate` ran |
-| User `rdp` can't log in | Check user is in `Remote Desktop Users`: `net localgroup "Remote Desktop Users"` |
+| User `louis-rdp` can't log in | Check user is in `Remote Desktop Users`: `net localgroup "Remote Desktop Users"` |
 | Want to undo everything | Run script → option 6 (reset), then manually delete user & FW rules |
 | Forgot the port | Check state: `type %ProgramData%\rdp-netbird-setup\state.json` |

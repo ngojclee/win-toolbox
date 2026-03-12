@@ -23,7 +23,7 @@ $STATE_FILE           = "$env:ProgramData\rdp-netbird-setup\state.json"
 $RDP_DEFAULT_PORT     = 33389
 $RDP_PORT_MIN         = 1024
 $RDP_PORT_MAX         = 65535
-$RDP_DEFAULT_USER     = "rdp"
+$RDP_DEFAULT_USER     = "louis-rdp"
 
 # ============================================================
 # HELPERS
@@ -212,9 +212,9 @@ function Read-RDPUserSetup {
     Write-Host "  [1] Tao user rieng (khuyen nghi)" -ForegroundColor White
     Write-Host "  [2] Dung user hien tai ($env:USERNAME)" -ForegroundColor White
     Write-Host ""
-    $userChoice = Read-Host "  Chon (1-2)"
+    $userChoice = Read-Host "  Chon (Enter = 1)"
 
-    if ($userChoice -eq "1") {
+    if ($userChoice -ne "2") {
         Write-Host ""
         Write-Host "  Nhap ten user RDP (Enter = '$RDP_DEFAULT_USER'):" -ForegroundColor Yellow
         Write-Host "  (Nen dung cung ten tren tat ca may de nho)" -ForegroundColor DarkGray
@@ -237,8 +237,8 @@ function Read-RDPUserSetup {
         Write-Host "  Co  = cai duoc phan mem, chay script admin, toan quyen" -ForegroundColor DarkGray
         Write-Host "  Khong = chi xem file, chay portable app, gioi han" -ForegroundColor DarkGray
         Write-Host "  (Da co Netbird + Firewall bao ve, cho Admin cung an toan)" -ForegroundColor DarkGray
-        $adminChoice = Read-Host "  Cho Admin? (y/n, Enter = y)"
-        $giveAdmin = $adminChoice.Trim().ToLower() -ne "n"
+        $adminChoice = Read-Host "  Cho Admin? (y/n, Enter = n)"
+        $giveAdmin = $adminChoice.Trim().ToLower() -eq "y"
 
         $createdUser = New-RDPUser -Username $userName -BlankPassword $AllowBlank -AddToAdmin $giveAdmin
         return $createdUser
@@ -321,16 +321,16 @@ function Show-PeerSelector {
 
     Write-Host ""
     Write-Host "  (* = dang duoc phep | [ON]=Connected | [OFF]=Disconnected)" -ForegroundColor DarkGray
-    Write-Host "  0 = chon tat ca Connected | Nhap so de toggle: '1 3'" -ForegroundColor Yellow
-    Write-Host "  Enter = giu nguyen" -ForegroundColor DarkGray
-    $selection = Read-Host "  Chon"
+    Write-Host "  Nhap so de toggle: '1 3' | 0 = chon tat ca" -ForegroundColor Yellow
+    Write-Host "  Enter = chon tat ca Connected" -ForegroundColor DarkGray
+    $selection = Read-Host "  Chon (Enter = all)"
 
     $toggled = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($ip in $CurrentlyAllowed) {
         if ($ip) { $toggled.Add($ip) | Out-Null }
     }
 
-    if ($selection.Trim() -eq "0" -or $selection.Trim().ToLower() -eq "all") {
+    if ($selection.Trim() -eq "" -or $selection.Trim() -eq "0" -or $selection.Trim().ToLower() -eq "all") {
         # Select all connected peers (add all, don't toggle)
         foreach ($p in ($Peers | Where-Object { $_.Status -eq "Connected" -and $_.IP })) {
             $toggled.Add($p.IP) | Out-Null
@@ -472,8 +472,8 @@ function Run-FirstSetup {
     Write-Host "[3/5] Blank password policy..." -ForegroundColor Cyan
     Write-Host "  Cho phep RDP bang tai khoan khong co mat khau?" -ForegroundColor Yellow
     Write-Host "  (Chi nen bat neu may nay trong LAN + da dung Netbird gioi han IP)" -ForegroundColor DarkGray
-    $bpInput    = Read-Host "  (y/n)"
-    $allowBlank = $bpInput.Trim().ToLower() -eq "y"
+    $bpInput    = Read-Host "  (y/n, Enter = y)"
+    $allowBlank = $bpInput.Trim().ToLower() -ne "n"
     Set-BlankPasswordPolicy -Allow $allowBlank
 
     Write-Host ""
