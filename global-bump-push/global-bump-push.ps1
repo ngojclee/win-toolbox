@@ -2,7 +2,8 @@
 # ==============================================================
 # Global Version Bump & Git Push — All Projects
 # ==============================================================
-# Scans D:\Python\projects for ALL git repos with GitHub remotes,
+# Scans D:\Python\projects (depth 4) for ALL git repos with GitHub remotes,
+# including nested repos (e.g. LuxeClaw\LuxeClaw-Portable).
 # detects version files, bumps version k, commits & pushes.
 #
 # Supports:
@@ -10,6 +11,7 @@
 #   - package.json           (Node.js apps)
 #   - pyproject.toml         (Python projects)
 #   - WordPress plugin .php  (Version: x.y.z.k in header)
+#   - Python *.py             (APP_VERSION = "x.y.z.k")
 #
 # Usage:
 #   .\scripts\global-bump-push.ps1                           → bump k for ALL repos
@@ -98,9 +100,10 @@ foreach ($gd in $gitDirs) {
     $repoPath = $gd.Parent.FullName
     $relPath = $repoPath.Substring($ProjectsRoot.Length + 1)
 
-    # Filter by -Only / -Exclude
-    if ($Only -and $relPath -notlike $Only) { continue }
-    if ($Exclude -and $relPath -like $Exclude) { continue }
+    # Filter by -Only / -Exclude (match against full relPath OR repo folder name)
+    $repoName = Split-Path $repoPath -Leaf
+    if ($Only -and ($relPath -notlike $Only) -and ($repoName -notlike $Only)) { continue }
+    if ($Exclude -and (($relPath -like $Exclude) -or ($repoName -like $Exclude))) { continue }
 
     # Must have a GitHub remote
     $remote = git -C $repoPath remote get-url origin 2>$null
@@ -253,6 +256,36 @@ foreach ($repo in $repoResults) {
         }
     }
 
+    # ────────────────────────────────────────────
+    # E. Python APP_VERSION (APP_VERSION = "x.y.z.k" in .py files)
+    # ────────────────────────────────────────────
+    $pyVersionFiles = Get-ChildItem -Path $repoPath -Filter "*.py" -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+    Where-Object {
+        $rel = $_.FullName.Substring($repoPath.Length + 1)
+        $rel -notmatch "(node_modules|\.git|__pycache__|\.venv|build|dist)" -and
+        (Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue) -match 'APP_VERSION\s*=\s*"[\d.]+"'
+    }
+
+    foreach ($pyf in $pyVersionFiles) {
+        $content = Get-Content $pyf.FullName -Raw
+        if ($content -match 'APP_VERSION\s*=\s*"([\d.]+)"') {
+            $oldVer = $Matches[1]
+            $parsed = Parse-Version $oldVer
+            if (-not $parsed) { continue }
+
+            $commitCount = (git -C $repoPath log --oneline 2>$null | Measure-Object).Count
+            $new = Bump-Version -x $parsed.x -y $parsed.y -z $parsed.z -k $parsed.k `
+                -Level $Level -SyncMode:$Sync -CommitCount $commitCount
+
+            if ("$($parsed.x).$($parsed.y).$($parsed.z).$($parsed.k)" -ne $new.version) {
+                $content = $content -replace '(APP_VERSION\s*=\s*")[\d.]+(")', "`${1}$($new.version)`${2}"
+                if (-not $DryRun) { $content | Set-Content $pyf.FullName -NoNewline }
+                $bumped = $true
+            }
+            $relFile = $pyf.FullName.Substring($repoPath.Length + 1)
+            $versionChanges += "$relFile : $oldVer → $($new.version)"
+        }
+    }
     # ── Display results for this repo ──
     if ($versionChanges.Count -gt 0) {
         $totalRepos++
