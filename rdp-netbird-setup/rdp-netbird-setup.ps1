@@ -268,20 +268,34 @@ function Get-NetbirdPeers {
     $rawLines = & $nb status -d 2>&1
     $peers = @()
     $cur   = $null
+    $inPeers = $false
 
     foreach ($line in $rawLines) {
         $line = $line.Trim()
+
+        # Detect "Peers" section header
+        if ($line -match '^Peers\s*:') {
+            $inPeers = $true
+            continue
+        }
+
+        # Format 1: "Peer: hostname" (older netbird)
         if ($line -match '^Peer:\s*(.+)$') {
             if ($cur) { $peers += $cur }
             $cur = [PSCustomObject]@{ Name=$Matches[1].Trim(); IP=""; Status="Unknown"; FQDN="" }
+            $inPeers = $true
         }
-        elseif ($line -match '^([a-zA-Z0-9][a-zA-Z0-9\-\.]+)\s*:$' -and -not $cur) {
+        # Format 2: "hostname.netbird.cloud:" (newer netbird — each peer starts with FQDN:)
+        elseif ($inPeers -and $line -match '^([a-zA-Z0-9][a-zA-Z0-9\-\.]+)\s*:$') {
             if ($cur) { $peers += $cur }
             $cur = [PSCustomObject]@{ Name=$Matches[1].Trim(); IP=""; Status="Unknown"; FQDN=$Matches[1].Trim() }
         }
-        elseif ($line -match 'NetBird IP:\s*([\d\.]+)' -and $cur) { $cur.IP = $Matches[1] }
-        elseif ($line -match 'Status:\s*(\w+)'         -and $cur) { $cur.Status = $Matches[1] }
-        elseif ($line -match 'FQDN:\s*(.+)'            -and $cur) { $cur.FQDN = $Matches[1].Trim() }
+        # Peer properties
+        elseif ($cur) {
+            if ($line -match 'NetBird IP:\s*([\d\.]+)')  { $cur.IP = $Matches[1] }
+            elseif ($line -match 'Status:\s*(\w+)')       { $cur.Status = $Matches[1] }
+            elseif ($line -match 'FQDN:\s*(.+)')          { $cur.FQDN = $Matches[1].Trim() }
+        }
     }
     if ($cur) { $peers += $cur }
     return $peers
