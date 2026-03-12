@@ -50,19 +50,27 @@ Lock down Windows RDP so **only your Netbird peers** can connect. Non-standard p
 
 ## Quick Start
 
-### Option A — Clone the whole toolbox
+### Option A — One-liner (paste into any PowerShell)
+
+Downloads and auto-runs with admin privileges (UAC popup):
+
+```powershell
+irm "https://raw.githubusercontent.com/ngojclee/win-toolbox/main/rdp-netbird-setup/rdp-netbird-setup.ps1" -OutFile "$env:TEMP\rdp-setup.ps1"; Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -File `"$env:TEMP\rdp-setup.ps1`""
+```
+
+### Option B — Download and run manually
+
+```powershell
+irm "https://raw.githubusercontent.com/ngojclee/win-toolbox/main/rdp-netbird-setup/rdp-netbird-setup.ps1" -OutFile rdp-setup.ps1
+powershell -ExecutionPolicy Bypass -File rdp-setup.ps1
+```
+
+### Option C — Clone the whole toolbox
 
 ```powershell
 git clone https://github.com/ngojclee/win-toolbox.git
 cd win-toolbox\rdp-netbird-setup
 powershell -ExecutionPolicy Bypass -File rdp-netbird-setup.ps1
-```
-
-### Option B — Download just this script
-
-```powershell
-irm "https://raw.githubusercontent.com/ngojclee/win-toolbox/main/rdp-netbird-setup/rdp-netbird-setup.ps1" -OutFile rdp-setup.ps1
-powershell -ExecutionPolicy Bypass -File rdp-setup.ps1
 ```
 
 ## First Run Walkthrough
