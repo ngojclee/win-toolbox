@@ -417,24 +417,24 @@ function Show-ConfigSummary {
         [string[]]$AllowedIPs
     )
     Write-Host ""
-    Write-Host "  ┌──────────────────────────────────────────────┐" -ForegroundColor Cyan
-    Write-Host "  │          CAU HINH HIEN TAI                   │" -ForegroundColor Cyan
-    Write-Host "  ├──────────────────────────────────────────────┤" -ForegroundColor Cyan
-    Write-Host ("  │  RDP Port      : {0,-27}│" -f $Port) -ForegroundColor White
-    Write-Host ("  │  RDP User      : {0,-27}│" -f $(if ($RDPUser) { $RDPUser } else { '(chua cau hinh)' })) -ForegroundColor White
-    Write-Host ("  │  Blank password : {0,-27}│" -f $(if ($AllowBlank) { 'Cho phep' } else { 'Khoa' })) -ForegroundColor White
-    Write-Host ("  │  IP whitelisted : {0,-27}│" -f $AllowedIPs.Count) -ForegroundColor White
-    Write-Host "  │                                              │" -ForegroundColor Cyan
+    Write-Host "  +------------------------------------------------+" -ForegroundColor Cyan
+    Write-Host "  |          CAU HINH HIEN TAI                     |" -ForegroundColor Cyan
+    Write-Host "  +------------------------------------------------+" -ForegroundColor Cyan
+    Write-Host ("  |  RDP Port      : {0,-29}|" -f $Port) -ForegroundColor White
+    Write-Host ("  |  RDP User      : {0,-29}|" -f $(if ($RDPUser) { $RDPUser } else { '(chua cau hinh)' })) -ForegroundColor White
+    Write-Host ("  |  Blank password : {0,-28}|" -f $(if ($AllowBlank) { 'Cho phep' } else { 'Khoa' })) -ForegroundColor White
+    Write-Host ("  |  IP whitelisted : {0,-28}|" -f $AllowedIPs.Count) -ForegroundColor White
+    Write-Host "  |                                                |" -ForegroundColor Cyan
 
     if ($AllowedIPs.Count -gt 0) {
         foreach ($ip in $AllowedIPs) {
-            Write-Host ("  │    - {0,-40}│" -f $ip) -ForegroundColor DarkGray
+            Write-Host ("  |    - {0,-42}|" -f $ip) -ForegroundColor DarkGray
         }
     } else {
-        Write-Host "  │    (chua co IP nao)                         │" -ForegroundColor Yellow
+        Write-Host "  |    (chua co IP nao)                           |" -ForegroundColor Yellow
     }
 
-    Write-Host "  └──────────────────────────────────────────────┘" -ForegroundColor Cyan
+    Write-Host "  +------------------------------------------------+" -ForegroundColor Cyan
 
     # Connection hint
     Write-Host ""
