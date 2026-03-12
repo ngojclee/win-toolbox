@@ -214,8 +214,10 @@ Run anytime. The script detects the existing state file and shows the management
 |------|------|
 | Script | `rdp-netbird-setup.ps1` (portable) |
 | State | `%ProgramData%\rdp-netbird-setup\state.json` |
-| FW Rule 1 | `RDP - Allowed IPs Only` |
-| FW Rule 2 | `RDP - Block All Others` |
+| FW Rule (TCP Allow) | `RDP - Allowed IPs Only (TCP)` |
+| FW Rule (UDP Allow) | `RDP - Allowed IPs Only (UDP)` |
+| FW Rule (TCP Block) | `RDP - Block All Others (TCP)` |
+| FW Rule (UDP Block) | `RDP - Block All Others (UDP)` |
 
 ## Troubleshooting
 
@@ -228,4 +230,74 @@ Run anytime. The script detects the existing state file and shows the management
 | Can't connect with blank password | Ensure option was set to `y` and `gpupdate` ran |
 | User `louis-rdp` can't log in | Check user is in `Remote Desktop Users`: `net localgroup "Remote Desktop Users"` |
 | Want to undo everything | Run script → option 6 (reset), then manually delete user & FW rules |
+
+## Diagnostics Checklist
+
+Run these on the **target machine** (the one you configured for RDP) to verify everything is working:
+
+### 1. Port listening (TCP + UDP)?
+
+```powershell
+netstat -an | findstr 33389
+```
+
+Expected: both TCP and UDP lines with `LISTENING`.
+
+### 2. RDP service running?
+
+```powershell
+Get-Service TermService | Select Status, StartType
+```
+
+Expected: `Running` / `Automatic`.
+
+### 3. RDP enabled in registry?
+
+```powershell
+Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" -Name fDenyTSConnections | Select fDenyTSConnections
+```
+
+Expected: **0** (0 = enabled, 1 = blocked).
+
+### 4. RDP port correct in registry?
+
+```powershell
+Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name PortNumber | Select PortNumber
+```
+
+Expected: **33389** (or your custom port).
+
+### 5. Firewall rules correct?
+
+```powershell
+Get-NetFirewallRule -DisplayName "RDP*" | Format-Table DisplayName, Enabled, Action
+Get-NetFirewallRule -DisplayName "RDP*" | Get-NetFirewallAddressFilter | Select RemoteAddress
+```
+
+Expected: 4 rules (TCP/UDP Allow + Block), your IP in the whitelist.
+
+### 6. Your Netbird IP (run on YOUR machine)
+
+```powershell
+netbird status
+```
+
+Note the `NetBird IP` — it must be in the whitelist from step 5.
+
+### 7. Connection test (run on YOUR machine)
+
+```powershell
+Test-NetConnection <target_netbird_ip> -Port 33389
+```
+
+Expected: `TcpTestSucceeded: True`.
+
+### 8. Connect via RDP
+
+```powershell
+mstsc /v:<target_netbird_ip>:33389
+```
+
+Login with user `louis-rdp` (or your configured username).
+
 | Forgot the port | Check state: `type %ProgramData%\rdp-netbird-setup\state.json` |
