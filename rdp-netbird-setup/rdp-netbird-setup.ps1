@@ -394,36 +394,35 @@ function Apply-FirewallRules {
         [int]$Port
     )
 
-    # Remove old rules (both TCP and UDP)
+    # Remove our custom rules (clean slate)
     foreach ($name in @($FIREWALL_RULE_ALLOW, $FIREWALL_RULE_ALLOW_UDP, $FIREWALL_RULE_BLOCK, $FIREWALL_RULE_BLOCK_UDP)) {
         Remove-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue
     }
-    # Also clean up legacy rule names (before TCP/UDP split)
+    # Clean up legacy rule names
     Remove-NetFirewallRule -DisplayName "RDP - Allowed IPs Only" -ErrorAction SilentlyContinue
     Remove-NetFirewallRule -DisplayName "RDP - Block All Others" -ErrorAction SilentlyContinue
 
+    # Disable built-in Windows RDP firewall rules (they allow ANY address)
+    Get-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue |
+        Set-NetFirewallRule -Enabled False -ErrorAction SilentlyContinue
+    Write-Host "  [OK] Built-in RDP firewall rules disabled (dung rules whitelist thay the)." -ForegroundColor DarkGray
+
     if ($AllowedIPs.Count -eq 0) {
-        Write-Host "  [WARN] Danh sach trong - RDP hien mo cho tat ca IP." -ForegroundColor Yellow
+        Write-Host "  [WARN] Danh sach trong - RDP khong co IP nao duoc phep." -ForegroundColor Yellow
         return
     }
 
-    # TCP rules
+    # Allow rules for whitelisted IPs only (TCP + UDP)
+    # Windows Firewall default-deny inbound handles blocking all other IPs
     New-NetFirewallRule `
         -DisplayName $FIREWALL_RULE_ALLOW -Direction Inbound -Protocol TCP `
         -LocalPort $Port -RemoteAddress $AllowedIPs -Action Allow -Profile Any -Enabled True | Out-Null
-    New-NetFirewallRule `
-        -DisplayName $FIREWALL_RULE_BLOCK -Direction Inbound -Protocol TCP `
-        -LocalPort $Port -RemoteAddress "Any" -Action Block -Profile Any -Enabled True | Out-Null
 
-    # UDP rules (RDP uses UDP for RemoteFX / better performance)
     New-NetFirewallRule `
         -DisplayName $FIREWALL_RULE_ALLOW_UDP -Direction Inbound -Protocol UDP `
         -LocalPort $Port -RemoteAddress $AllowedIPs -Action Allow -Profile Any -Enabled True | Out-Null
-    New-NetFirewallRule `
-        -DisplayName $FIREWALL_RULE_BLOCK_UDP -Direction Inbound -Protocol UDP `
-        -LocalPort $Port -RemoteAddress "Any" -Action Block -Profile Any -Enabled True | Out-Null
 
-    Write-Host "  [OK] Firewall da cap nhat TCP + UDP (port $Port)." -ForegroundColor Green
+    Write-Host "  [OK] Firewall: cho phep $($AllowedIPs.Count) IP qua TCP + UDP (port $Port)." -ForegroundColor Green
 }
 
 # ---- RDP Enable / Blank Password ----
