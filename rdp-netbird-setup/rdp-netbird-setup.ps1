@@ -156,50 +156,49 @@ function Test-LocalUser([string]$Username) {
 function New-RDPUser {
     param(
         [string]$Username,
-        [bool]$BlankPassword
+        [bool]$BlankPassword,
+        [bool]$AddToAdmin = $false
     )
 
     $exists = Test-LocalUser -Username $Username
 
     if ($exists) {
         Write-Host "  User '$Username' da ton tai." -ForegroundColor Yellow
-        # Ensure user is in Remote Desktop Users group
-        $inGroup = (Get-RDPGroupMembers) -contains $Username
-        if (-not $inGroup) {
-            net localgroup "Remote Desktop Users" $Username /add 2>&1 | Out-Null
-            Write-Host "  [OK] Da them '$Username' vao Remote Desktop Users." -ForegroundColor Green
-        } else {
-            Write-Host "  [OK] '$Username' da co trong Remote Desktop Users." -ForegroundColor Green
+    } else {
+        # Create new user
+        if ($BlankPassword) {
+            net user $Username /add /active:yes 2>&1 | Out-Null
+            $emptySecure = New-Object System.Security.SecureString
+            Set-LocalUser -Name $Username -Password $emptySecure -ErrorAction SilentlyContinue
+            Write-Host "  [OK] Tao user '$Username' (khong mat khau)." -ForegroundColor Green
         }
-        return $Username
+        else {
+            Write-Host "  Nhap mat khau cho user '$Username':" -ForegroundColor Yellow
+            $secPwd = Read-Host "  Password" -AsSecureString
+            net user $Username /add /active:yes 2>&1 | Out-Null
+            Set-LocalUser -Name $Username -Password $secPwd
+            Write-Host "  [OK] Tao user '$Username' (co mat khau)." -ForegroundColor Green
+        }
+        # Password never expires for RDP convenience
+        Set-LocalUser -Name $Username -PasswordNeverExpires $true -ErrorAction SilentlyContinue
     }
 
-    # Create new user
-    if ($BlankPassword) {
-        # Create user with blank password
-        net user $Username /add /active:yes 2>&1 | Out-Null
-        # Set blank password explicitly
-        $emptySecure = New-Object System.Security.SecureString
-        Set-LocalUser -Name $Username -Password $emptySecure -ErrorAction SilentlyContinue
-        Write-Host "  [OK] Tao user '$Username' (khong mat khau)." -ForegroundColor Green
-    }
-    else {
-        Write-Host "  Nhap mat khau cho user '$Username':" -ForegroundColor Yellow
-        $secPwd = Read-Host "  Password" -AsSecureString
-        net user $Username /add /active:yes 2>&1 | Out-Null
-        Set-LocalUser -Name $Username -Password $secPwd
-        Write-Host "  [OK] Tao user '$Username' (co mat khau)." -ForegroundColor Green
+    # Ensure user is in Remote Desktop Users group
+    $inRDP = (Get-RDPGroupMembers) -contains $Username
+    if (-not $inRDP) {
+        net localgroup "Remote Desktop Users" $Username /add 2>&1 | Out-Null
+        Write-Host "  [OK] Da them '$Username' vao Remote Desktop Users." -ForegroundColor Green
+    } else {
+        Write-Host "  [OK] '$Username' da co trong Remote Desktop Users." -ForegroundColor Green
     }
 
-    # Ensure NOT in Administrators (standard user only)
-    net localgroup "Administrators" $Username /delete 2>&1 | Out-Null
-
-    # Add to Remote Desktop Users
-    net localgroup "Remote Desktop Users" $Username /add 2>&1 | Out-Null
-    Write-Host "  [OK] Da them '$Username' vao Remote Desktop Users." -ForegroundColor Green
-
-    # Password never expires for RDP convenience
-    Set-LocalUser -Name $Username -PasswordNeverExpires $true -ErrorAction SilentlyContinue
+    # Admin group
+    if ($AddToAdmin) {
+        net localgroup "Administrators" $Username /add 2>&1 | Out-Null
+        Write-Host "  [OK] Da them '$Username' vao Administrators." -ForegroundColor Green
+    } else {
+        net localgroup "Administrators" $Username /delete 2>&1 | Out-Null
+    }
 
     return $Username
 }
@@ -208,8 +207,7 @@ function Read-RDPUserSetup {
     param([bool]$AllowBlank)
 
     Write-Host "  Tao user rieng cho RDP?" -ForegroundColor Yellow
-    Write-Host "  (Khuyen nghi: tach biet khoi admin, an toan hon)" -ForegroundColor DarkGray
-    Write-Host "  (User chi co quyen Remote Desktop, khong phai Admin)" -ForegroundColor DarkGray
+    Write-Host "  (Khuyen nghi: tach biet khoi account chinh)" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  [1] Tao user rieng (khuyen nghi)" -ForegroundColor White
     Write-Host "  [2] Dung user hien tai ($env:USERNAME)" -ForegroundColor White
@@ -233,7 +231,16 @@ function Read-RDPUserSetup {
             $userName = $RDP_DEFAULT_USER
         }
 
-        $createdUser = New-RDPUser -Username $userName -BlankPassword $AllowBlank
+        # Ask about admin rights
+        Write-Host ""
+        Write-Host "  Cho user '$userName' quyen Administrator?" -ForegroundColor Yellow
+        Write-Host "  Co  = cai duoc phan mem, chay script admin, toan quyen" -ForegroundColor DarkGray
+        Write-Host "  Khong = chi xem file, chay portable app, gioi han" -ForegroundColor DarkGray
+        Write-Host "  (Da co Netbird + Firewall bao ve, cho Admin cung an toan)" -ForegroundColor DarkGray
+        $adminChoice = Read-Host "  Cho Admin? (y/n, Enter = y)"
+        $giveAdmin = $adminChoice.Trim().ToLower() -ne "n"
+
+        $createdUser = New-RDPUser -Username $userName -BlankPassword $AllowBlank -AddToAdmin $giveAdmin
         return $createdUser
     }
     else {
@@ -286,8 +293,16 @@ function Show-PeerSelector {
         [string[]]$CurrentlyAllowed
     )
 
+    $connectedCount = ($Peers | Where-Object { $_.Status -eq "Connected" -and $_.IP }).Count
+
     Write-Host "  Peers hien co trong Netbird:" -ForegroundColor Yellow
     Write-Host ""
+
+    # Prominent "select all" option
+    if ($connectedCount -gt 0) {
+        Write-Host "  [  0]  >>> CHON TAT CA ($connectedCount peers Connected) <<<" -ForegroundColor Green
+        Write-Host ""
+    }
 
     $i = 1
     foreach ($p in $Peers) {
@@ -306,8 +321,8 @@ function Show-PeerSelector {
 
     Write-Host ""
     Write-Host "  (* = dang duoc phep | [ON]=Connected | [OFF]=Disconnected)" -ForegroundColor DarkGray
-    Write-Host "  Nhap so de TOGGLE (them neu chua co, bo neu da co): vi du '1 3'" -ForegroundColor Yellow
-    Write-Host "  'all' = toggle tat ca Connected | Enter = giu nguyen" -ForegroundColor DarkGray
+    Write-Host "  0 = chon tat ca Connected | Nhap so de toggle: '1 3'" -ForegroundColor Yellow
+    Write-Host "  Enter = giu nguyen" -ForegroundColor DarkGray
     $selection = Read-Host "  Chon"
 
     $toggled = [System.Collections.Generic.HashSet[string]]::new()
@@ -315,10 +330,12 @@ function Show-PeerSelector {
         if ($ip) { $toggled.Add($ip) | Out-Null }
     }
 
-    if ($selection.Trim().ToLower() -eq "all") {
+    if ($selection.Trim() -eq "0" -or $selection.Trim().ToLower() -eq "all") {
+        # Select all connected peers (add all, don't toggle)
         foreach ($p in ($Peers | Where-Object { $_.Status -eq "Connected" -and $_.IP })) {
-            if (-not $toggled.Remove($p.IP)) { $toggled.Add($p.IP) | Out-Null }
+            $toggled.Add($p.IP) | Out-Null
         }
+        Write-Host "  [OK] Da chon tat ca $connectedCount peers Connected." -ForegroundColor Green
     }
     elseif ($selection.Trim() -ne "") {
         $indices = $selection.Trim() -split '\s+' | ForEach-Object {
@@ -422,7 +439,6 @@ function Show-ConfigSummary {
     # Connection hint
     Write-Host ""
     $portSuffix = if ($Port -ne 3389) { ":$Port" } else { "" }
-    $userPrefix = if ($RDPUser) { "$RDPUser@" } else { "" }
     Write-Host "  >> Ket noi: mstsc /v:<IP>$portSuffix" -ForegroundColor Yellow
     if ($RDPUser) {
         Write-Host "     User   : $RDPUser" -ForegroundColor Yellow
