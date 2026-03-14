@@ -151,7 +151,6 @@ function Get-InstallHashMap {
         # Firefox uses a hash of the install directory as the section name
         # We match by trying each edition exe path
         foreach ($edition in $FirefoxEditions) {
-            $installDir = Split-Path $edition.ExePath
             # Firefox's hash algorithm: lowercase path -> djb2 hash
             # We can't easily compute it, but we can use the installs.ini which has the same hashes
             $installsBlock = ""
