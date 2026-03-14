@@ -314,6 +314,279 @@ function Enable-TaskbarGrouping {
     }
 }
 
+# --- AppUserModelID Helper (COM Interop) -------------------------------------
+
+# This is the KEY piece that makes separate taskbar grouping work.
+# Windows groups taskbar icons by AppUserModelID (AUMID).
+# When taskbar.grouping.useprofile=true, Firefox hashes the profile path
+# using Mozilla's HashString() and sets the result as AUMID (a decimal number).
+# The pinned .lnk shortcut ALSO needs the same AUMID embedded,
+# otherwise Windows creates a NEW taskbar icon instead of matching the pin.
+
+$appUserModelIdTypeAdded = $false
+
+function Initialize-AppUserModelIdType {
+    if ($script:appUserModelIdTypeAdded) { return }
+
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+
+public class ShortcutAppId {
+    // CLSID_ShellLink
+    [ComImport]
+    [Guid("00021401-0000-0000-C000-000000000046")]
+    public class ShellLink { }
+
+    // IShellLinkW
+    [ComImport]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("000214F9-0000-0000-C000-000000000046")]
+    public interface IShellLinkW {
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder pszFile, int cch, IntPtr pfd, uint fFlags);
+        void GetIDList(out IntPtr ppidl);
+        void SetIDList(IntPtr pidl);
+        void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder pszName, int cch);
+        void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+        void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder pszDir, int cch);
+        void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
+        void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder pszArgs, int cch);
+        void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
+        void GetHotkey(out ushort pwHotkey);
+        void SetHotkey(ushort wHotkey);
+        void GetShowCmd(out int piShowCmd);
+        void SetShowCmd(int iShowCmd);
+        void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder pszIconPath, int cch, out int piIcon);
+        void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
+        void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, uint dwReserved);
+        void Resolve(IntPtr hwnd, uint fFlags);
+        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
+    }
+
+    // IPropertyStore
+    [ComImport]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
+    public interface IPropertyStore {
+        int GetCount(out uint cProps);
+        int GetAt(uint iProp, out PROPERTYKEY pkey);
+        int GetValue(ref PROPERTYKEY key, out PROPVARIANT pv);
+        int SetValue(ref PROPERTYKEY key, ref PROPVARIANT pv);
+        int Commit();
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    public struct PROPERTYKEY {
+        public Guid fmtid;
+        public uint pid;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PROPVARIANT {
+        public ushort vt;
+        public ushort wReserved1;
+        public ushort wReserved2;
+        public ushort wReserved3;
+        public IntPtr p;
+        public int p2;
+    }
+
+    // VT_LPWSTR = 31
+    const ushort VT_LPWSTR = 31;
+
+    // PKEY_AppUserModel_ID = {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, 5
+    static PROPERTYKEY PKEY_AppUserModel_ID = new PROPERTYKEY {
+        fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"),
+        pid = 5
+    };
+
+    public static void SetAppUserModelId(string shortcutPath, string appId) {
+        // Create ShellLink COM object
+        var shellLink = (IShellLinkW)new ShellLink();
+
+        // Load existing .lnk file
+        var persistFile = (IPersistFile)shellLink;
+        persistFile.Load(shortcutPath, 2); // STGM_READWRITE = 2
+
+        // Get IPropertyStore
+        var propertyStore = (IPropertyStore)shellLink;
+
+        // Set AppUserModelID
+        var pv = new PROPVARIANT();
+        pv.vt = VT_LPWSTR;
+        pv.p = Marshal.StringToCoTaskMemUni(appId);
+
+        int hr = propertyStore.SetValue(ref PKEY_AppUserModel_ID, ref pv);
+        Marshal.FreeCoTaskMem(pv.p);
+
+        if (hr < 0) Marshal.ThrowExceptionForHR(hr);
+
+        propertyStore.Commit();
+
+        // Save the .lnk file
+        persistFile.Save(shortcutPath, true);
+    }
+
+    // --- Window AUMID reading (for runtime detection) ---
+
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern int GetWindowTextLength(IntPtr hWnd);
+
+    [DllImport("shell32.dll")]
+    static extern int SHGetPropertyStoreForWindow(
+        IntPtr hwnd,
+        ref Guid iid,
+        out IPropertyStore propertyStore
+    );
+
+    /// <summary>
+    /// Reads the AppUserModelID from a running process by scanning its visible windows.
+    /// Used to detect the actual AUMID that Firefox sets at runtime.
+    /// </summary>
+    public static string GetProcessAumid(uint processId) {
+        string result = null;
+        EnumWindows((hwnd, lparam) => {
+            if (!IsWindowVisible(hwnd)) return true;
+            if (GetWindowTextLength(hwnd) <= 0) return true;
+
+            uint pid;
+            GetWindowThreadProcessId(hwnd, out pid);
+            if (pid != processId) return true;
+
+            try {
+                Guid IID = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+                IPropertyStore store;
+                int hr = SHGetPropertyStoreForWindow(hwnd, ref IID, out store);
+                if (hr != 0 || store == null) return true;
+
+                PROPERTYKEY pkey = PKEY_AppUserModel_ID;
+                PROPVARIANT pv;
+                hr = store.GetValue(ref pkey, out pv);
+                if (hr == 0 && pv.vt == VT_LPWSTR && pv.p != IntPtr.Zero) {
+                    result = Marshal.PtrToStringUni(pv.p);
+                    return false; // stop enumeration, found it
+                }
+            } catch {}
+            return true;
+        }, IntPtr.Zero);
+        return result;
+    }
+}
+"@ -ErrorAction Stop
+
+    $script:appUserModelIdTypeAdded = $true
+}
+
+function Get-ProfileAppUserModelId {
+    <#
+    .DESCRIPTION
+    Detects the ACTUAL AppUserModelID that Firefox sets at runtime for a given profile.
+
+    Instead of trying to replicate Mozilla's internal hash algorithm (which depends
+    on internal path resolution that varies by platform/version), we:
+      1. Launch Firefox briefly with the target profile
+      2. Read the AUMID from the window using SHGetPropertyStoreForWindow
+      3. Close Firefox
+      4. Return the real AUMID
+
+    This is the only reliable way to get the exact AUMID Firefox uses.
+    #>
+    param(
+        [string]$ProfilePath,
+        [string]$FirefoxExe
+    )
+
+    # Ensure C# type is loaded
+    Initialize-AppUserModelIdType
+
+    Write-Host "    Detecting AUMID (launching Firefox briefly)..." -ForegroundColor Gray
+
+    # Record existing Firefox PIDs so we can identify the new ones
+    $existingPids = @(Get-Process firefox -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+
+    # Launch Firefox with this profile
+    $proc = Start-Process -FilePath $FirefoxExe -ArgumentList "-no-remote --profile `"$ProfilePath`"" -PassThru
+
+    # Wait for Firefox to initialize and set its AUMID
+    # Firefox spawns child processes; the original PID may exit quickly
+    $aumid = $null
+    $maxWait = 20  # seconds
+    $waited = 0
+
+    while ($waited -lt $maxWait -and -not $aumid) {
+        Start-Sleep -Seconds 3
+        $waited += 3
+
+        # Scan ALL Firefox processes (not just launched PID) for AUMID
+        $allFirefoxPids = @(Get-Process firefox -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+
+        foreach ($fpid in $allFirefoxPids) {
+            try {
+                $detectedAumid = [ShortcutAppId]::GetProcessAumid([uint32]$fpid)
+                if ($detectedAumid -and $detectedAumid -ne "") {
+                    # Found an AUMID - but is it from our newly launched profile?
+                    # If it's a new PID (not in existingPids), it's likely ours
+                    if ($fpid -notin $existingPids -or $allFirefoxPids.Count -eq 1) {
+                        $aumid = $detectedAumid
+                        break
+                    }
+                }
+            } catch {}
+        }
+    }
+
+    # Close ALL newly-spawned Firefox processes
+    $newPids = @(Get-Process firefox -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id | Where-Object { $_ -notin $existingPids })
+    foreach ($fpid in $newPids) {
+        try { Stop-Process -Id $fpid -Force -ErrorAction SilentlyContinue } catch {}
+    }
+    # Also try to stop the original process
+    try { $proc | Stop-Process -Force -ErrorAction SilentlyContinue } catch {}
+    Start-Sleep -Seconds 2
+
+    if ($aumid) {
+        return $aumid
+    }
+
+    Write-Warn "    Could not detect AUMID automatically"
+    return $null
+}
+
+function Set-ShortcutAppUserModelId {
+    <#
+    .DESCRIPTION
+    Sets the System.AppUserModel.ID property on an existing .lnk shortcut file.
+    This embeds the AUMID into the shortcut so Windows can match the pinned icon
+    with the running Firefox window.
+    #>
+    param(
+        [string]$ShortcutPath,
+        [string]$AppUserModelId
+    )
+
+    Initialize-AppUserModelIdType
+
+    try {
+        [ShortcutAppId]::SetAppUserModelId($ShortcutPath, $AppUserModelId)
+        return $true
+    } catch {
+        Write-Warn "Failed to set AppUserModelID on shortcut: $_"
+        return $false
+    }
+}
+
 # --- Create Shortcut ---------------------------------------------------------
 
 function New-ProfileShortcut {
@@ -333,6 +606,20 @@ function New-ProfileShortcut {
     $lnk.Description      = "$ShortcutName (Firefox Profile)"
     $lnk.WorkingDirectory = Split-Path $FirefoxExe
     $lnk.Save()
+
+    # === KEY FIX: Embed AppUserModelID into the shortcut ===
+    # This makes Windows match the pinned taskbar icon with the running Firefox window.
+    # Without this, clicking a pinned icon opens Firefox but it appears as a NEW icon
+    # instead of grouping under the pinned one.
+    $aumid = Get-ProfileAppUserModelId -ProfilePath $ProfilePath -FirefoxExe $FirefoxExe
+    if ($aumid) {
+        $setResult = Set-ShortcutAppUserModelId -ShortcutPath $shortcutPath -AppUserModelId $aumid
+        if ($setResult) {
+            Write-OK "  AppUserModelID: $aumid"
+        }
+    } else {
+        Write-Warn "  Could not embed AppUserModelID (pin manually from running app)"
+    }
 
     return $shortcutPath
 }
