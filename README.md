@@ -10,6 +10,7 @@ Download a single script and run — no install needed.
 |--------|--------|-------------|
 | [`firefox-profile-taskbar/`](./firefox-profile-taskbar/) | `firefox-profile-taskbar.ps1` | Pin multiple Firefox profiles as **separate taskbar icons** |
 | [`global-bump-push/`](./global-bump-push/) | `global-bump-push.ps1` | Auto-bump `x.y.z.k` versions across all git repos & push |
+| [`nilesoft-shell-fix/`](./nilesoft-shell-fix/) | `fix-win11-taskbar-menu.ps1` | Fix Win11/Nilesoft taskbar menu labels and clipped text |
 | [`rdp-netbird-setup/`](./rdp-netbird-setup/) | `rdp-netbird-setup.ps1` | Lock down RDP to **Netbird peers only** via firewall whitelist |
 
 ## Firefox Extensions
