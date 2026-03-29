@@ -24,6 +24,9 @@
 .PARAMETER SkipWindowsMetricsReset
     Skip resetting HKCU WindowMetrics values.
 
+.PARAMETER LabelsOnly
+    Convenience switch. Same as -SkipWindowsMetricsReset.
+
 .PARAMETER RestartExplorer
     Restart explorer.exe after applying fixes.
 
@@ -38,6 +41,9 @@
     .\fix-win11-taskbar-menu.ps1 -SkipWindowsMetricsReset
 
 .EXAMPLE
+    .\fix-win11-taskbar-menu.ps1 -LabelsOnly -RestartExplorer
+
+.EXAMPLE
     .\fix-win11-taskbar-menu.ps1 -NilesoftPath "D:\Nilesoft Shell" -Backup $false
 #>
 
@@ -46,11 +52,17 @@ param(
     [string]$NilesoftPath = "C:\Program Files\Nilesoft Shell",
     [switch]$SkipNilesoftPatch,
     [switch]$SkipWindowsMetricsReset,
+    [Alias("NilesoftOnly")]
+    [switch]$LabelsOnly,
     [switch]$RestartExplorer,
     [bool]$Backup = $true
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($LabelsOnly) {
+    $SkipWindowsMetricsReset = $true
+}
 
 function Write-OK {
     param([string]$Message)
