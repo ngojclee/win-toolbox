@@ -1,44 +1,45 @@
 # Nilesoft Shell / Win11 Taskbar Menu Text Fix
 
-Fixes a common Windows 11 issue where taskbar context menu labels are missing or clipped after installing [Nilesoft Shell](https://nilesoft.org/) (or after custom Windows menu metrics were changed).
+One main script is enough: `fix-win11-taskbar-menu.ps1`.
 
-## Recommended Script
+It fixes:
+1. Missing labels from Nilesoft (`title.*`)
+2. Clipped/too-narrow taskbar menu text from Windows metrics (`MenuWidth`, `MenuHeight`)
 
-Use `fix-win11-taskbar-menu.ps1` for the full fix:
+## Fastest Run (Other Machines)
 
-1. Patches `title.*` labels in Nilesoft `.nss` files to explicit text
-2. Resets Windows menu width/height metrics (`MenuWidth`, `MenuHeight`) to defaults
-3. Optionally restarts Explorer
-
-## Quick Run (Other Machines)
+Run full fix (recommended):
 
 ```powershell
 irm "https://raw.githubusercontent.com/ngojclee/win-toolbox/main/nilesoft-shell-fix/fix-win11-taskbar-menu.ps1" -OutFile "$env:TEMP\fix-win11-taskbar-menu.ps1"; Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -File `"$env:TEMP\fix-win11-taskbar-menu.ps1`" -RestartExplorer"
 ```
 
-## Local Usage
+Run labels-only (if you only need old behavior):
 
-Run as Administrator:
+```powershell
+irm "https://raw.githubusercontent.com/ngojclee/win-toolbox/main/nilesoft-shell-fix/fix-win11-taskbar-menu.ps1" -OutFile "$env:TEMP\fix-win11-taskbar-menu.ps1"; Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -File `"$env:TEMP\fix-win11-taskbar-menu.ps1`" -LabelsOnly -RestartExplorer"
+```
+
+## Local Usage
 
 ```powershell
 cd nilesoft-shell-fix
 
-# Full fix + restart Explorer
+# Full fix (recommended)
 .\fix-win11-taskbar-menu.ps1 -RestartExplorer
 
-# Only patch Nilesoft labels (skip registry menu metrics reset)
+# Labels-only mode
+.\fix-win11-taskbar-menu.ps1 -LabelsOnly -RestartExplorer
+
+# Advanced: skip one side explicitly
+.\fix-win11-taskbar-menu.ps1 -SkipNilesoftPatch
 .\fix-win11-taskbar-menu.ps1 -SkipWindowsMetricsReset
-
-# Custom Nilesoft path
-.\fix-win11-taskbar-menu.ps1 -NilesoftPath "D:\Nilesoft Shell"
-
-# No backup files
-.\fix-win11-taskbar-menu.ps1 -Backup $false
 ```
 
-## Legacy Script
+## Compatibility
 
-`fix-nilesoft-labels.ps1` is still available if you only need label replacement and do not want the Windows metrics reset step.
+`fix-nilesoft-labels.ps1` is kept as a compatibility wrapper and now forwards to:
+`fix-win11-taskbar-menu.ps1 -LabelsOnly`
 
 ## Requirements
 
