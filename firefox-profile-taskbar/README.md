@@ -101,6 +101,9 @@ You can re-run the script anytime:
 
 ## Recreating a single shortcut (no console flash)
 
+> 📘 **Full end-to-end guide** — prerequisites, every step, scaling to any number of
+> profiles and troubleshooting: [`CREATE-SHORTCUTS.md`](CREATE-SHORTCUTS.md).
+
 If you deleted one shortcut and only need to rebuild **that one**, use
 [`recreate-profile-shortcut.ps1`](recreate-profile-shortcut.ps1) — it wires the Desktop
 shortcut straight to `firefox.exe` through a per-profile junction (no launcher stub, so
