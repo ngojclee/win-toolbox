@@ -99,12 +99,61 @@ You can re-run the script anytime:
 - Installed Developer Edition? Run again, it auto-detects the new exe
 - Existing shortcuts are not affected
 
+## Recreating a single shortcut (no console flash)
+
+If you deleted one shortcut and only need to rebuild **that one**, use
+[`recreate-profile-shortcut.ps1`](recreate-profile-shortcut.ps1) — it wires the Desktop
+shortcut straight to `firefox.exe` through a per-profile junction (no launcher stub, so
+no terminal window flashes on open) and can embed the real runtime `AppUserModelID`:
+
+```powershell
+.\recreate-profile-shortcut.ps1 -ProfileDir "$env:APPDATA\Mozilla\Firefox\Profiles\<profile dir>" -ShortcutName "Firefox Shop"
+# optional: also launch the profile once (~5-30s, closes itself afterwards) to embed the
+# exact AUMID Firefox sets at runtime so the pinned icon matches the live window:
+.\recreate-profile-shortcut.ps1 -ProfileDir "...\Profiles\<profile dir>" -ShortcutName "Firefox Shop" -EmbedAumid
+```
+
+Then: double-click it → right-click the live icon → **Pin to taskbar** (Windows 11 has no
+programmatic pin; `IShellItemArray`/`InvokeVerb('Pin to taskbar')` are removed/refused).
+Background and verified gotchas (incl. why a hard-coded AUMID like `Mozilla.Firefox.Shop`
+does NOT match — Firefox hashes the profile path): [`manual-profile-shortcut.md`](manual-profile-shortcut.md).
+
+## Taskbar pins that open the wrong profile (or steal focus)
+
+Symptom: click pin **A** → profile A opens; click pin **B** → it just focuses A's window
+instead of opening B's profile. Double-clicking the Desktop/Start shortcuts still works
+in parallel — only the pinned buttons misbehave.
+
+Cause: Windows decides "is this app already running?" by **AppUserModelID**. With
+`taskbar.grouping.useprofile = true`, Firefox sets each window's AUMID to a **decimal
+hash of the profile path** (e.g. `2842963073`) — not a name like `Mozilla.Firefox.Shop`.
+A pin carrying no/stale AUMID therefore matches the *other* profile's window and gets
+swallowed by it.
+
+Fix: [`fix-taskbar-pin-aumid.ps1`](fix-taskbar-pin-aumid.ps1) — reads each pin's target +
+`--profile` argument, grabs the real runtime AUMID from that profile's live window
+(briefly launching it only if it is not already running, and closing only what it
+spawned), then stamps it into **every copy** of the `.lnk` (Desktop **and**
+`...\User Pinned\TaskBar\`) and verifies with a readback:
+
+```powershell
+./fix-taskbar-pin-aumid.ps1 -ShortcutName "Firefox Work"
+./fix-taskbar-pin-aumid.ps1 -ShortcutName "Firefox Shop"
+```
+
+One name per call — some shells collapse `"A","B"` into a single argument.
+If a pin still focuses the wrong window after stamping, unpin/re-pin it once (or restart
+explorer) so the taskbar re-reads the pin metadata.
+
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
+| Pinned button opens the *other* profile / second pin does nothing | Run `fix-taskbar-pin-aumid.ps1 -ShortcutName "<pin name>"` — the pin must carry the profile's decimal-hash AUMID, and **both** copies (Desktop + TaskBar pin dir) must be stamped |
 | Both profiles merge into one icon | Ensure `taskbar.grouping.useprofile` is `true` in **both** profiles' `about:config` |
-| Second profile won't open | Ensure `-no-remote` is in the shortcut Target |
+| Second profile won't open / opens a tab in the first profile's window | Ensure `-no-remote` is in the shortcut Target and the exe path is unique per profile (junction dir) |
+| Terminal/console window flashes before the browser opens | Shortcut points at the generated `Launchers\Firefox<Name>Launcher.exe` stub — rebuild it with `recreate-profile-shortcut.ps1` (targets `firefox.exe` directly) |
 | Dev Edition profile uses wrong exe | Re-run script — it reads `installs.ini` for correct mapping |
-| Profile not detected | Check `%APPDATA%\Mozilla\Firefox\profiles.ini` |
+| Profile not detected | Check `%APPDATA%\Mozilla\Firefox\profiles.ini` — but note **profiles can exist on disk without being in `profiles.ini`**; also enumerate `%APPDATA%\Mozilla\Firefox\Profiles\` and identify the right folder via its `places.sqlite` history / `logins.json` |
+| Stale pin keeps stealing the click | Unpin the old taskbar entry first; a pin to a deleted target keeps its own group key |
 | Script can't find Firefox | Install Firefox at default location |
