@@ -103,6 +103,10 @@ You can re-run the script anytime:
 
 > 📘 **Full end-to-end guide** — prerequisites, every step, scaling to any number of
 > profiles and troubleshooting: [`CREATE-SHORTCUTS.md`](CREATE-SHORTCUTS.md).
+>
+> 🔎 **Audit first when something misbehaves** — [`list-profile-shortcuts.ps1`](list-profile-shortcuts.ps1)
+> prints every Firefox shortcut/pin with its target, `--profile` argument and AUMID, and
+> flags `NO-PROFILE-ARG`, `NO-AUMID`, `DUP-AUMID`, `MULTI-PIN` (exit 0 = clean).
 
 If you deleted one shortcut and only need to rebuild **that one**, use
 [`recreate-profile-shortcut.ps1`](recreate-profile-shortcut.ps1) — it wires the Desktop
