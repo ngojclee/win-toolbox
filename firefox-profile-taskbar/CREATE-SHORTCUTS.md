@@ -113,9 +113,21 @@ Both scripts read the value from the running window (`SHGetPropertyStoreForWindo
 `PKEY_AppUserModelID` = `{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3},5`), close only the
 Firefox PIDs they started, and verify with a readback.
 
+Verified reference values from the reference machine (three profiles, all distinct):
+
+| Profile | AUMID |
+|---|---|
+| Work (`JpIYBuOI.Profile 1`) | `2842963073` |
+| Shop (`3bgkx3tc.default-release-…`) | `1831375031` |
+| Google (`aa1ygowr.Google`) | `3911597118` |
+
 **Both copies must be stamped** when the shortcut is pinned:
 `Desktop\<name>.lnk` and
 `%APPDATA%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\<name>.lnk`.
+
+> If Explorer is running while a profile is launched for detection, it can add a
+> duplicate pin (`Firefox Work (2).lnk`) for the same profile — harmless but confusing.
+> `list-profile-shortcuts.ps1` reports it as `MULTI-PIN`; delete the `(2)` copy.
 
 ---
 
@@ -193,12 +205,20 @@ Notes for >2 profiles:
 
 ## 7. Verify (do this after every change)
 
-1. Double-click `Firefox Work.lnk` → Work window opens.
-2. Double-click `Firefox Shop.lnk` → a **second, separate** window opens on the Shop
+1. **Run the audit first** — it catches every known failure mode in one shot:
+   ```powershell
+   ./list-profile-shortcuts.ps1        # exit 0 + "OK" when clean
+   ```
+   Expect one line per shortcut (Desktop **and** taskbar copy), each with a `--profile`
+   target and its own AUMID. Any `NO-PROFILE-ARG`, `NO-AUMID`, `DUP-AUMID` or `MULTI-PIN`
+   flag is a real defect — see the table below.
+2. Double-click `Firefox Work.lnk` → Work window opens.
+3. Double-click `Firefox Shop.lnk` → a **second, separate** window opens on the Shop
    profile (both must be open side by side).
-3. Repeat by clicking the two **taskbar pins** — this is the case that breaks when the
-   AUMID is missing/stale.
-4. Optional: `fix-taskbar-pin-aumid.ps1` prints `before`/`after` AUMIDs with a readback —
+4. Repeat by clicking the **taskbar pins** — this is the case that breaks when the
+   AUMID is missing/stale. Clicking pin A then pin B must give two windows, and
+   clicking a pin twice must focus its own window instead of opening a tab in another one.
+5. Optional: `fix-taskbar-pin-aumid.ps1` prints `before`/`after` AUMIDs with a readback —
    both copies must show the same value and `[OK]`.
 
 ## 8. Troubleshooting
@@ -212,6 +232,10 @@ Notes for >2 profiles:
 | Profile missing from `profiles.ini` | Doesn't matter for `--profile "<abs path>"`; find it by `places.sqlite`/`logins.json` |
 | Settings shows ghost Firefox entries pointing at `FirefoxTaskbar\ProfileN` | Leftovers from the old setup; uninstalling one guts the real install. Delete those Uninstall keys, then reinstall Firefox (see the incident notes below) |
 | After a Firefox update the shortcut lost `--profile` | Re-run `recreate-profile-shortcut.ps1`; Firefox updates rewrite Start-Menu shortcuts |
+| A pin **always** opens a new tab in the profile that is already running, never its own | A stray `.lnk` in the pin folder points at `…\Mozilla Firefox\firefox.exe` with **empty Arguments** → Firefox hands the launch to the running instance. Find it with `list-profile-shortcuts.ps1` (`NO-PROFILE-ARG`), delete it, refresh explorer |
+| A pin shows `<none>` for its AUMID | That profile is missing `taskbar.grouping.useprofile = true` → add it, then `fix-taskbar-pin-aumid.ps1 -ShortcutName "<name>"` (this was the Google profile here) |
+| The same profile appears as two pins (`Firefox Work` **and** `Firefox Work (2)`) | A duplicate pin created while a profile was launched for AUMID detection (`MULTI-PIN`). Delete the `(2)` copy — it is backed up first if you use the scripts here |
+| `DUP-AUMID` audit flag | Two **different** profiles somehow carry the same hash (usually a shortcut pointing at the wrong profile dir). Fix the target, then re-stamp |
 
 ### Incident notes (why the ghosts are dangerous)
 
