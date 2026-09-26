@@ -1,0 +1,12 @@
+{
+    "addons": {
+        "ln-browser-control@luxeclaw.com": {
+            "updates": [
+                {
+                    "version": "1.0.1.9",
+                    "update_link": "https://github.com/ngojclee/win-toolbox/releases/download/lnc-browser-control-v1.0.1.9/LNC.Browser.Control-1.0.1.9.xpi"
+                }
+            ]
+        }
+    }
+}
