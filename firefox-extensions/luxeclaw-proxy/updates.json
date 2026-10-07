@@ -13,6 +13,10 @@
                 {
                     "version": "1.1.1.15",
                     "update_link": "https://github.com/ngojclee/win-toolbox/releases/download/luxeclaw-proxy-v1.1.1.15/LNC-Proxy-1.1.1.15.xpi"
+                },
+                {
+                    "version": "1.1.1.17",
+                    "update_link": "https://github.com/ngojclee/win-toolbox/releases/download/luxeclaw-proxy-v1.1.1.17/LNC-Proxy-1.1.1.17.xpi"
                 }
             ]
         }
