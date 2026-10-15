@@ -17,6 +17,10 @@
                 {
                     "version": "1.1.1.6",
                     "update_link": "https://github.com/ngojclee/win-toolbox/releases/download/container-inspector-v1.1.1.6/Container.Inspector-1.1.1.6.xpi"
+                },
+                {
+                    "version": "1.1.1.8",
+                    "update_link": "https://github.com/ngojclee/win-toolbox/releases/download/container-inspector-v1.1.1.8/LNC-Container-1.1.1.8.xpi"
                 }
             ]
         }
