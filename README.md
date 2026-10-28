@@ -1,7 +1,6 @@
 # 🧰 win-toolbox
 
-Portable Windows scripts (PowerShell 5.1+) for workstation setup & maintenance — plus the public
-release / auto-update feed for the LNC Firefox extensions.
+Portable Windows scripts (PowerShell 5.1+) for workstation setup & maintenance.
 
 Download one script and run it. Nothing to install, no module dependencies, no service to keep alive.
 
@@ -14,7 +13,6 @@ Download one script and run it. Nothing to install, no module dependencies, no s
 | Folder | Entry points | What it does |
 |--------|--------------|--------------|
 | [`firefox-profile-taskbar/`](./firefox-profile-taskbar/) | `firefox-profile-taskbar.ps1` + 4 helpers | Pin each Firefox profile as its **own taskbar icon** (per-profile AUMID, junction + `-no-remote`) |
-| [`removed/`](./removed/) | — | Public `updates.json` feeds + signed `.xpi` release assets for 3 Firefox extensions (see below) |
 | [`global-bump-push/`](./global-bump-push/) | `global-bump-push.ps1` | Auto-bump `x.y.z.k` across every git repo under a root, commit and push |
 | [`hermes-gateway-windows/`](./hermes-gateway-windows/) | *(docs only)* | Run **Hermes Agent** unattended: hidden dashboard task + scrypt auth, gateway autostart map, log hygiene |
 | [`nilesoft-shell-fix/`](./nilesoft-shell-fix/) | `fix-win11-taskbar-menu.ps1` | Fix Win11 / Nilesoft Shell taskbar menu labels and clipped text (`-LabelsOnly`, `-RestartExplorer`) |
@@ -41,43 +39,6 @@ Reading: [`CREATE-SHORTCUTS.md`](./firefox-profile-taskbar/CREATE-SHORTCUTS.md) 
 |--------|---------|
 | `fix-win11-taskbar-menu.ps1` | Main fix — missing Nilesoft `title.*` labels **and** clipped menu text (Windows `MenuWidth`/`MenuHeight` metrics) |
 | `fix-nilesoft-labels.ps1` | Legacy wrapper, calls the main script with `-LabelsOnly` |
-
-## Firefox extensions
-
-Signed `.xpi` builds, installed from a release asset and kept current by Firefox polling the
-`updates.json` in this repo.
-
-| Extension | Version | Folder (feed) | Install |
-|-----------|---------|---------------|---------|
-| **LNC-Container** (Container Inspector) | 1.1.1.9 | [`removed/`](./removed/) | [⬇️ XPI](https://example.invalid/removed) |
-| **LNC-Proxy** | 1.1.1.17 | [`removed/`](./removed/) | [⬇️ XPI](https://example.invalid/removed) |
-| **LNC Browser Control** | 1.0.1.11 | [`removed/`](./removed/) | [⬇️ XPI](https://example.invalid/removed) |
-
-Install: click the XPI link **in Firefox** → accept the prompt. Manual route:
-`about:addons` → ⚙️ → *Install Add-on From File…*
-
-### How the update feed works
-
-```
-manifest.json  gecko.update_url
-   → raw.githubusercontent.com/ngojclee/win-toolbox/main/removed/<folder>/updates.json
-      → newest entry.update_link
-         → github.com/ngojclee/win-toolbox/releases/download/<tag>/<file>.xpi
-```
-
-Consequences worth knowing:
-
-- **Folder names are load-bearing.** `removed/` and `removed/` are historical names kept
-  because they are live `update_url` targets (the add-ons are now **LNC-Container** and **LNC-Proxy**).
-  Renaming or moving them breaks auto-update on every installed machine.
-- **This repo must stay public.** Firefox reads `update_url` anonymously; assets in the private source repo
-  cannot serve the updater.
-- Append entries in ascending `version` order, bump to a version that has never been released (AMO burns
-  versions), then push — `raw.githubusercontent.com` can lag a few minutes, so verify via the API:
-  `gh api repos/ngojclee/win-toolbox/contents/removed/<folder>/updates.json --jq .content | base64 -d`
-- An install that shipped **without** `update_url` never self-updates; replace it manually once.
-
-Chrome/Chromium builds are not published here — they are loaded unpacked from the private source repo.
 
 ## Portable binaries
 
@@ -106,7 +67,7 @@ themselves — read the folder `README.md` first, they document the rollback pat
 
 | Repo | Visibility | Role |
 |------|:---:|------|
-| `ngojclee/LNC-Extensions` | private | Extension source, unsigned builds, signed-XPI tracking |
+| `ngojclee/LNC-Extensions` | private | Firefox/Chrome extension source, signed-XPI archive — extensions are **not** distributed publicly |
 | `ngojclee/win-toolbox-private` | private | Machine-specific provisioning (setup keys, tokens, internal configs) — deliberately **not** here |
 
 ## License
